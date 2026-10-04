@@ -2,7 +2,7 @@
 Real-time UI Dashboard Overlay renderer for OpenCV frames.
 """
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
@@ -167,5 +167,60 @@ class DashboardOverlay:
         cv2.putText(combined, "[Q] / [ESC] Quit Verification Mode", (20, ch - 18), self.font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
 
         return combined
+
+    def render_aruco_hud(
+        self,
+        frame: np.ndarray,
+        is_detected: bool,
+        marker_ids: List[int],
+        dictionary_name: str,
+        marker_size_mm: float,
+        is_calibrated: bool = True
+    ) -> np.ndarray:
+        """
+        Renders live ArUco detection status overlay:
+        - ARUCO: DETECTED / ARUCO: NOT DETECTED
+        - ID: <id>
+        - Dictionary & marker size configuration
+        """
+        overlay = frame.copy()
+        h, w = frame.shape[:2]
+
+        panel_w = 420
+        panel_h = 110
+        cv2.rectangle(overlay, (15, 15), (15 + panel_w, 15 + panel_h), (20, 20, 20), -1)
+        cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
+
+        border_color = (0, 255, 0) if is_detected else (0, 165, 255)
+        cv2.rectangle(frame, (15, 15), (15 + panel_w, 15 + panel_h), border_color, 2)
+
+        # ARUCO Status
+        if is_detected:
+            cv2.putText(frame, "ARUCO: DETECTED", (30, 45), self.font, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+            ids_str = ", ".join(str(i) for i in marker_ids)
+            cv2.putText(frame, f"ID: {ids_str}", (30, 75), self.font, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
+        else:
+            cv2.putText(frame, "ARUCO: NOT DETECTED", (30, 45), self.font, 0.6, (0, 165, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, "Searching for physical ArUco target...", (30, 75), self.font, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
+
+        # Config text
+        calib_str = "CALIBRATED" if is_calibrated else "UNCALIBRATED"
+        cv2.putText(
+            frame,
+            f"Dict: {dictionary_name} | Size: {marker_size_mm:.1f}mm | {calib_str}",
+            (30, 105),
+            self.font,
+            0.42,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA
+        )
+
+        # Bottom Controls bar
+        cv2.rectangle(frame, (10, h - 40), (w - 10, h - 10), (0, 0, 0), -1)
+        cv2.putText(frame, "[Q] / [ESC] Quit ArUco Tracking Mode", (20, h - 18), self.font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+        return frame
+
 
 

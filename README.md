@@ -129,4 +129,41 @@ python main.py --mode verify
 - Shows HUD statistics: `Calibration: LOADED`, `RMS Error: ...`, and `Camera Resolution: ...`.
 - Press **`Q`** or **`ESC`** to exit.
 
+---
+
+## 🎯 Stage 3: Real-Time ArUco Marker Tracking Guide
+
+Stage 3 detects physical ArUco markers, identifies marker IDs, draws 2D corners, and projects 3D coordinate frame axes ($X$: Red, $Y$: Green, $Z$: Blue) using your calibrated camera parameters.
+
+### 🖨️ 1. Printing & Preparing the Physical ArUco Marker
+1. **Generate an ArUco Marker**:
+   - Select Dictionary: **`DICT_6X6_250`** (or `DICT_4X4_50`, `DICT_5X5_100`).
+   - Select Marker ID (e.g. `23` or `0`).
+2. **Print at 100% Scale**: Print the marker so that the outer black square side is a known physical length (e.g. `50.0` mm or `100.0` mm).
+3. **Attach Flat**: Tape the marker securely onto a flat rigid physical object (box, cardboard, or wooden block). *Avoid bending or crinkling paper.*
+4. **Measure Physical Size**: Measure the exact outer black square width with a ruler in millimeters (e.g. `50.0` mm).
+
+---
+
+### 🚀 2. Running Stage 3 Tracking
+
+```bash
+# Run real-time ArUco tracking (default dictionary: DICT_6X6_250, marker size: 50.0 mm)
+python main.py --mode track
+
+# Or customize dictionary name and physical marker size
+python main.py --mode track --dict DICT_6X6_250 --marker-size 50.0
+```
+
+- **Screen Telemetry**:
+  - Displays **`ARUCO: DETECTED`** and **`ID: <marker_id>`** when visible.
+  - Displays **`ARUCO: NOT DETECTED`** when no marker is in camera view.
+- **3D Coordinate Axes**:
+  - Draws RGB 3D spatial coordinate axes directly on the marker center:
+    - **Red**: X axis
+    - **Green**: Y axis
+    - **Blue**: Z axis (pointing outwards perpendicular to marker plane)
+- Press **`Q`** or **`ESC`** to quit cleanly.
+
+
 

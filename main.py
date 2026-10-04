@@ -1,11 +1,13 @@
 """
 AI and Robotics Lab - Real-Time 6-DoF Object Tracker
-Stage 2 & Verification Entry Point
+Stage 3 & All Modes Entry Point
 
 Modes:
-  1. Calibration (--mode calibrate): Physical chessboard corner detection, sub-pixel refinement,
+  1. Tracking (--mode track): Real-time physical ArUco marker detection, 2D corner extraction,
+     and 3D coordinate axis rendering using calibrated camera parameters.
+  2. Calibration (--mode calibrate): Physical chessboard corner detection, sub-pixel refinement,
      cv2.calibrateCamera intrinsic matrix solver, and JSON persistence.
-  2. Verification (--mode verify): Real-time side-by-side comparison of raw webcam feed vs.
+  3. Verification (--mode verify): Real-time side-by-side comparison of raw webcam feed vs.
      undistorted camera feed using saved JSON parameters.
 """
 
@@ -28,8 +30,12 @@ logger = logging.getLogger("Main")
 
 def parse_args():
     parser = argparse.ArgumentParser(description="AI & Robotics Lab - Real-Time 6-DoF Object Tracker")
-    parser.add_argument("--mode", type=str, choices=["calibrate", "verify"], default="calibrate",
-                        help="Operation mode: 'calibrate' to capture chessboard frames, 'verify' to test live undistortion (default: calibrate)")
+    parser.add_argument("--mode", type=str, choices=["track", "calibrate", "verify"], default="track",
+                        help="Operation mode: 'track' for live ArUco detection & 3D axes, 'calibrate' for chessboard calibration, 'verify' for undistortion test (default: track)")
+    parser.add_argument("--dict", type=str, default="DICT_6X6_250",
+                        help="ArUco dictionary name (e.g. DICT_6X6_250, DICT_4X4_50, DICT_5X5_100, etc.) (default: DICT_6X6_250)")
+    parser.add_argument("--marker-size", type=float, default=50.0,
+                        help="Physical ArUco marker side length in millimeters (default: 50.0)")
     parser.add_argument("--cols", type=int, default=9, help="Number of inner chessboard corners along columns (default: 9)")
     parser.add_argument("--rows", type=int, default=6, help="Number of inner chessboard corners along rows (default: 6)")
     parser.add_argument("--square-size", type=float, default=25.0, help="Physical square size in millimeters (default: 25.0)")
@@ -37,6 +43,76 @@ def parse_args():
     parser.add_argument("--calibration-file", type=str, default="calibration_data/camera_calibration.json",
                         help="Calibration JSON file path (default: calibration_data/camera_calibration.json)")
     return parser.parse_args()
+
+
+def run_tracking_mode(args) -> None:
+    logger.info("Initializing Stage 3: Real-Time ArUco Marker Tracking...")
+    logger.info(f"ArUco Configuration: Dictionary='{args.dict}', Marker Size={args.marker_size} mm")
+
+    calibrator = CameraCalibrator()
+    if not calibrator.load_calibration(args.calibration_file):
+        logger.error("\n" + "=" * 70)
+        logger.error(f"❌ ERROR: Calibration file '{args.calibration_file}' does not exist or is invalid!")
+        logger.error("ArUco 3D pose estimation & axis drawing require camera calibration parameters.")
+        logger.error("Please run the calibration stage first using:")
+        logger.error("    python main.py --mode calibrate")
+        logger.error("=" * 70 + "\n")
+        sys.exit(1)
+
+    logger.info(f"✅ Loaded valid camera calibration from {args.calibration_file}")
+
+    from tracking.aruco_tracker import ArUcoTracker
+    aruco_tracker = ArUcoTracker(dictionary_name=args.dict, marker_size_mm=args.marker_size)
+    camera_manager = CameraManager(camera_id=args.camera_id, target_width=1280, target_height=720)
+    dashboard = DashboardOverlay()
+
+    if not camera_manager.start():
+        logger.critical("❌ ERROR: Failed to open physical camera stream.")
+        sys.exit(1)
+
+    window_name = "AI & Robotics Lab - Real-Time ArUco Marker Tracking (Stage 3)"
+    cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
+
+    logger.info("Live ArUco tracking active. Show physical printed ArUco marker to laptop webcam.")
+    logger.info("Press 'Q' or 'ESC' to exit.")
+
+    try:
+        while True:
+            success, raw_frame = camera_manager.get_frame()
+            if not success or raw_frame is None:
+                continue
+
+            # Detect ArUco markers in live camera feed
+            is_detected, marker_ids, corners, meta = aruco_tracker.detect_markers(raw_frame)
+
+            display_frame = raw_frame.copy()
+            if is_detected:
+                # Draw 4 corner boundaries & outline box
+                display_frame = aruco_tracker.draw_corners(display_frame, corners, marker_ids)
+                # Solve PnP and draw 3D coordinate axes
+                display_frame, poses = aruco_tracker.draw_axes_and_pose(
+                    display_frame, corners, marker_ids, calibrator.camera_matrix, calibrator.dist_coeffs
+                )
+
+            # Render ArUco HUD telemetry overlay
+            display_frame = dashboard.render_aruco_hud(
+                display_frame,
+                is_detected=is_detected,
+                marker_ids=marker_ids,
+                dictionary_name=aruco_tracker.dictionary_name,
+                marker_size_mm=aruco_tracker.marker_size_mm,
+                is_calibrated=True
+            )
+
+            cv2.imshow(window_name, display_frame)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q') or key == ord('Q') or key == 27:
+                logger.info("Exiting ArUco tracking mode...")
+                break
+    finally:
+        camera_manager.stop()
+        cv2.destroyAllWindows()
 
 
 def run_calibration_mode(args) -> None:
@@ -179,14 +255,13 @@ def run_verification_mode(args) -> None:
 
 def main() -> None:
     args = parse_args()
-    if args.mode == "verify":
+    if args.mode == "calibrate":
+        run_calibration_mode(args)
+    elif args.mode == "verify":
         run_verification_mode(args)
     else:
-        run_calibration_mode(args)
+        run_tracking_mode(args)
 
 
 if __name__ == "__main__":
     main()
-
-
-
