@@ -212,6 +212,49 @@ Rz (Roll) :  +178.2 deg
 - The displayed $X, Y, Z, R_x, R_y, R_z$ values are **raw, unfiltered physical measurements** derived from Perspective-n-Point ($PnP$) estimation (`cv2.SOLVEPNP_IPPE_SQUARE`).
 - Showing raw values allows direct evaluation of physical camera sensor noise and illumination stability before applying temporal smoothing filters in downstream stages.
 
+---
+
+## 📌 Stage 5: REAL Reference Pose Recording & Persistence
+
+Stage 5 allows locking a baseline reference pose ($X, Y, Z, R_x, R_y, R_z$) from live webcam measurements, persisting it to `reference/data.json`, and automatically restoring it upon application restart.
+
+### 🎮 1. Reference Pose Keyboard Controls
+
+| Key | Action | Description |
+| :--- | :--- | :--- |
+| **`SPACE`** | **Record Reference** | Captures the current live real pose and saves it to `reference/data.json`. |
+| **`R`** | **Clear Reference** | Resets baseline reference in memory and removes `reference/data.json`. |
+| **`Q` / `ESC`** | **Quit** | Exits the tracking session safely. |
+
+> **Note**: Pressing `SPACE` when no marker is visible will display a warning banner: `Cannot save reference: marker pose unavailable.` and will not save invalid data.
+
+---
+
+### 💾 2. Reference JSON Schema (`reference/data.json`)
+
+```json
+{
+    "timestamp": "2026-10-04 18:45:00",
+    "marker_id": 23,
+    "X": 124.5,
+    "Y": -45.2,
+    "Z": 450.8,
+    "Rx": 12.4,
+    "Ry": -5.1,
+    "Rz": 178.2,
+    "rvec": [0.21, -0.09, 3.10],
+    "tvec": [0.1245, -0.0452, 0.4508],
+    "SE3_matrix": [
+        [0.98, -0.15, 0.12, 0.1245],
+        [0.14, 0.99, 0.05, -0.0452],
+        [-0.13, -0.03, 0.99, 0.4508],
+        [0.0, 0.0, 0.0, 1.0]
+    ],
+    "camera_calibration_version": "calibration_data/camera_calibration.json"
+}
+```
+
+
 
 
 

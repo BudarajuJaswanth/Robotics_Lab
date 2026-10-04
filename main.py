@@ -1,9 +1,10 @@
 """
 AI and Robotics Lab - Real-Time 6-DoF Object Tracker
-Stage 4: Real-Time 6-DoF Pose Estimation Entry Point
+Stage 5: Real Reference Pose Recording Entry Point
 
 Orchestrates live physical webcam ingestion, ArUco marker detection, Perspective-n-Point (PnP) 
-6-DoF pose estimation, Euler angle conversion, 3D coordinate axis drawing, and raw HUD telemetry.
+6-DoF pose estimation, baseline reference pose recording to reference/data.json via SPACE,
+persistence across application restarts, and real-time HUD rendering.
 """
 
 import sys
@@ -16,6 +17,7 @@ from camera.camera_manager import CameraManager
 from camera.calibration import CameraCalibrator
 from tracking.aruco_tracker import ArUcoTracker
 from tracking.pose_estimator import PoseEstimator
+from reference.reference_manager import ReferenceManager
 from ui.dashboard import DashboardOverlay
 
 logging.basicConfig(
@@ -28,7 +30,7 @@ logger = logging.getLogger("Main")
 def parse_args():
     parser = argparse.ArgumentParser(description="AI & Robotics Lab - Real-Time 6-DoF Object Tracker")
     parser.add_argument("--mode", type=str, choices=["track", "calibrate", "verify"], default="track",
-                        help="Operation mode: 'track' for live 6-DoF pose estimation & 3D axes, 'calibrate' for chessboard calibration, 'verify' for undistortion test (default: track)")
+                        help="Operation mode: 'track' for live 6-DoF pose estimation & reference recording, 'calibrate' for chessboard calibration, 'verify' for undistortion test (default: track)")
     parser.add_argument("--dict", type=str, default="DICT_6X6_250",
                         help="ArUco dictionary name (e.g. DICT_6X6_250, DICT_4X4_50, DICT_5X5_100, etc.) (default: DICT_6X6_250)")
     parser.add_argument("--marker-size", type=float, default=50.0,
@@ -39,11 +41,13 @@ def parse_args():
     parser.add_argument("--camera-id", type=int, default=0, help="Webcam hardware index (default: 0)")
     parser.add_argument("--calibration-file", type=str, default="calibration_data/camera_calibration.json",
                         help="Calibration JSON file path (default: calibration_data/camera_calibration.json)")
+    parser.add_argument("--reference-file", type=str, default="reference/data.json",
+                        help="Reference pose JSON file path (default: reference/data.json)")
     return parser.parse_args()
 
 
 def run_tracking_mode(args) -> None:
-    logger.info("Initializing Stage 4: Real-Time 6-DoF Pose Estimation...")
+    logger.info("Initializing Stage 5: Real 6-DoF Pose Tracking & Reference Recording...")
     logger.info(f"Configuration: ArUco Dict='{args.dict}', Physical Marker Size={args.marker_size} mm")
 
     calibrator = CameraCalibrator()
@@ -56,10 +60,11 @@ def run_tracking_mode(args) -> None:
         logger.error("=" * 70 + "\n")
         sys.exit(1)
 
-    logger.info(f"✅ Loaded camera intrinsic matrix K and distortion coefficients from {args.calibration_file}")
+    logger.info(f"✅ Loaded camera calibration from {args.calibration_file}")
 
     aruco_tracker = ArUcoTracker(dictionary_name=args.dict, marker_size_mm=args.marker_size)
     pose_estimator = PoseEstimator(marker_size_mm=args.marker_size)
+    ref_manager = ReferenceManager(filepath=args.reference_file)
     camera_manager = CameraManager(camera_id=args.camera_id, target_width=1280, target_height=720)
     dashboard = DashboardOverlay()
 
@@ -67,11 +72,14 @@ def run_tracking_mode(args) -> None:
         logger.critical("❌ ERROR: Failed to open physical camera stream.")
         sys.exit(1)
 
-    window_name = "AI & Robotics Lab - Real-Time 6-DoF Object Tracker (Stage 4)"
+    window_name = "AI & Robotics Lab - Real-Time 6-DoF Pose & Reference Tracker"
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
-    logger.info("Live 6-DoF Pose Tracking active. Present physical ArUco marker to laptop webcam.")
-    logger.info("Press 'Q' or 'ESC' to exit.")
+    status_message = ""
+    if ref_manager.has_reference():
+        logger.info(f"Persistent reference pose loaded from {args.reference_file}")
+
+    logger.info("Controls: [SPACE] Save Reference Pose  |  [R] Clear Reference  |  [Q] Quit")
 
     try:
         while True:
@@ -87,7 +95,6 @@ def run_tracking_mode(args) -> None:
             primary_id = None
 
             if is_detected and len(corners) > 0:
-                # Outline 4 marker corners
                 display_frame = aruco_tracker.draw_corners(display_frame, corners, marker_ids)
                 primary_id = marker_ids[0]
 
@@ -106,20 +113,42 @@ def run_tracking_mode(args) -> None:
                     elif hasattr(cv2.aruco, "drawAxis"):
                         cv2.aruco.drawAxis(display_frame, calibrator.camera_matrix, calibrator.dist_coeffs, rvec, tvec, axis_len)
 
-            # Render Raw 6-DoF Telemetry HUD Overlay
+            # Render 6-DoF Telemetry and Reference HUD Overlay
             display_frame = dashboard.render_6dof_pose_hud(
                 display_frame,
                 is_detected=is_detected and (pose_data is not None),
                 marker_id=primary_id,
-                pose_data=pose_data
+                pose_data=pose_data,
+                ref_data=ref_manager.ref_data,
+                status_message=status_message
             )
 
             cv2.imshow(window_name, display_frame)
 
             key = cv2.waitKey(1) & 0xFF
-            if key == ord('q') or key == ord('Q') or key == 27:
+
+            # [SPACE] -> Record/Save current real pose as reference
+            if key == 32:
+                if is_detected and pose_data is not None and primary_id is not None:
+                    ok, msg = ref_manager.save_reference_pose(
+                        primary_id, pose_data, calibration_info=args.calibration_file
+                    )
+                    status_message = msg
+                else:
+                    status_message = "Cannot save reference: marker pose unavailable."
+                    logger.warning(status_message)
+
+            # [R] -> Clear reference pose
+            elif key == ord('r') or key == ord('R'):
+                ok, msg = ref_manager.clear_reference()
+                status_message = msg
+                logger.info(msg)
+
+            # [Q] or [ESC] -> Quit
+            elif key == ord('q') or key == ord('Q') or key == 27:
                 logger.info("Exiting 6-DoF tracking mode...")
                 break
+
     finally:
         camera_manager.stop()
         cv2.destroyAllWindows()

@@ -227,21 +227,29 @@ class DashboardOverlay:
         frame: np.ndarray,
         is_detected: bool,
         marker_id: Optional[int] = None,
-        pose_data: Optional[Dict[str, Any]] = None
+        pose_data: Optional[Dict[str, Any]] = None,
+        ref_data: Optional[Dict[str, Any]] = None,
+        status_message: str = ""
     ) -> np.ndarray:
         """
-        Renders live raw 6-DoF pose telemetry panel:
-        TRANSLATION: X, Y, Z in millimeters
-        ROTATION   : Rx (Pitch), Ry (Yaw), Rz (Roll) in degrees
+        Renders live raw 6-DoF pose telemetry panel and saved baseline reference pose panel.
         """
         overlay = frame.copy()
         h, w = frame.shape[:2]
 
+        # Left Panel: Live Current 6-DoF Pose
         panel_w = 420
         panel_h = 240
         cv2.rectangle(overlay, (15, 15), (15 + panel_w, 15 + panel_h), (15, 15, 15), -1)
+        
+        # Right Panel: Saved Reference Pose (if available)
+        ref_x = w - panel_w - 15
+        if ref_data is not None:
+            cv2.rectangle(overlay, (ref_x, 15), (ref_x + panel_w, 15 + panel_h), (15, 15, 15), -1)
+
         cv2.addWeighted(overlay, 0.8, frame, 0.2, 0, frame)
 
+        # Draw Left Panel Border
         border_color = (0, 255, 0) if is_detected else (0, 165, 255)
         cv2.rectangle(frame, (15, 15), (15 + panel_w, 15 + panel_h), border_color, 2)
 
@@ -249,29 +257,57 @@ class DashboardOverlay:
             tx, ty, tz = pose_data["translation_mm"]
             rx, ry, rz = pose_data["rotation_deg"]
 
-            cv2.putText(frame, f"6-DoF POSE [ID: {marker_id}] (RAW UNFILTERED)", (30, 42), self.font, 0.52, (0, 255, 255), 2, cv2.LINE_AA)
-
-            # Translation Header & Values
+            cv2.putText(frame, f"CURRENT POSE [ID: {marker_id}] (RAW)", (30, 42), self.font, 0.52, (0, 255, 255), 2, cv2.LINE_AA)
             cv2.putText(frame, "TRANSLATION (mm):", (30, 70), self.font, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
             cv2.putText(frame, f"X: {tx:+8.1f} mm", (50, 95), self.font, 0.55, (0, 255, 0), 2, cv2.LINE_AA)
             cv2.putText(frame, f"Y: {ty:+8.1f} mm", (50, 120), self.font, 0.55, (0, 255, 0), 2, cv2.LINE_AA)
             cv2.putText(frame, f"Z: {tz:+8.1f} mm", (50, 145), self.font, 0.55, (0, 255, 0), 2, cv2.LINE_AA)
 
-            # Rotation Header & Values
             cv2.putText(frame, "ROTATION (Euler Degrees):", (30, 172), self.font, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
             cv2.putText(frame, f"Rx (Pitch): {rx:+6.1f} deg", (50, 195), self.font, 0.52, (255, 255, 0), 2, cv2.LINE_AA)
             cv2.putText(frame, f"Ry (Yaw)  : {ry:+6.1f} deg", (50, 218), self.font, 0.52, (255, 255, 0), 2, cv2.LINE_AA)
             cv2.putText(frame, f"Rz (Roll) : {rz:+6.1f} deg", (50, 241), self.font, 0.52, (255, 255, 0), 2, cv2.LINE_AA)
         else:
-            cv2.putText(frame, "6-DoF POSE (RAW UNFILTERED)", (30, 45), self.font, 0.55, (0, 165, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, "CURRENT POSE (RAW UNFILTERED)", (30, 45), self.font, 0.55, (0, 165, 255), 2, cv2.LINE_AA)
             cv2.putText(frame, "STATUS: ARUCO MARKER NOT DETECTED", (30, 85), self.font, 0.5, (0, 165, 255), 1, cv2.LINE_AA)
             cv2.putText(frame, "Point laptop camera at physical ArUco target...", (30, 115), self.font, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
 
-        # Bottom bar
+        # Draw Right Panel (Reference Pose)
+        if ref_data is not None:
+            cv2.rectangle(frame, (ref_x, 15), (ref_x + panel_w, 15 + panel_h), (255, 255, 0), 2)
+            cv2.putText(frame, f"REFERENCE: SAVED [ID: {ref_data.get('marker_id')}]", (ref_x + 15, 42), self.font, 0.52, (0, 255, 255), 2, cv2.LINE_AA)
+
+            cv2.putText(frame, "SAVED REFERENCE TRANSLATION:", (ref_x + 15, 70), self.font, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.putText(frame, f"X: {ref_data['X']:+8.1f} mm", (ref_x + 35, 95), self.font, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Y: {ref_data['Y']:+8.1f} mm", (ref_x + 35, 120), self.font, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Z: {ref_data['Z']:+8.1f} mm", (ref_x + 35, 145), self.font, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
+
+            cv2.putText(frame, "SAVED REFERENCE ROTATION:", (ref_x + 15, 172), self.font, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.putText(frame, f"Rx: {ref_data['Rx']:+6.1f} deg", (ref_x + 35, 195), self.font, 0.52, (255, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Ry: {ref_data['Ry']:+6.1f} deg", (ref_x + 35, 218), self.font, 0.52, (255, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Rz: {ref_data['Rz']:+6.1f} deg", (ref_x + 35, 241), self.font, 0.52, (255, 255, 0), 2, cv2.LINE_AA)
+
+        # Status Message Banner if warning/action occurred
+        if status_message:
+            msg_bg = (0, 0, 180) if "Cannot" in status_message or "failed" in status_message else (0, 120, 0)
+            cv2.rectangle(frame, (15, 265), (15 + panel_w, 295), msg_bg, -1)
+            cv2.putText(frame, status_message, (25, 285), self.font, 0.46, (255, 255, 255), 1, cv2.LINE_AA)
+
+        # Bottom Controls Bar
         cv2.rectangle(frame, (10, h - 40), (w - 10, h - 10), (0, 0, 0), -1)
-        cv2.putText(frame, "[Q] / [ESC] Quit 6-DoF Pose Tracking", (20, h - 18), self.font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(
+            frame,
+            "[SPACE] Record Reference Pose  |  [R] Clear Reference  |  [Q] Quit",
+            (20, h - 18),
+            self.font,
+            0.5,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA
+        )
 
         return frame
+
 
 
 
