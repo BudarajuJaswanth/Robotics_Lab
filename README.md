@@ -284,6 +284,52 @@ Ry:    -6.4 deg               ROTATION CHANGE (DELTA EULER):
 Rz:  +178.7 deg               dRx:  +2.1 | dRy: -1.3 | dRz: +0.5 deg
 ```
 
+---
+
+## 🧪 Stage 7: Physical Accuracy Testing & CSV Evaluation
+
+Stage 7 evaluates the physical measurement accuracy of the laptop camera tracking system by comparing real webcam displacement measurements against user-defined physical ground-truth movements (e.g. `Exp_X = 50.0` mm, `Exp_Y = 0.0` mm, `Exp_Z = 0.0` mm).
+
+### 🚀 1. Running Stage 7 Physical Accuracy Testing
+
+```bash
+# Evaluate physical 50.0 mm movement along X axis
+python main.py --mode evaluate --exp-x 50.0 --exp-y 0.0 --exp-z 0.0 --output-csv data/accuracy_results.csv
+
+# Or evaluate 100.0 mm movement along Z axis (optical depth)
+python main.py --mode evaluate --exp-x 0.0 --exp-y 0.0 --exp-z 100.0
+```
+
+### 🎮 2. Interactive Experiment Workflow
+1. Point your laptop camera at the physical ArUco marker.
+2. Press **`SPACE`**: Locks the initial baseline reference pose.
+3. Move the physical target or webcam by the exact expected ground-truth distance (e.g., `50.0` mm along X using a ruler).
+4. Press **`SPACE`**: Captures real physical webcam samples into the evaluation buffer.
+5. Press **`S`**: Saves raw trials and summary metrics to `data/accuracy_results.csv` and prints the statistical summary table in your terminal.
+6. Press **`R`**: Resets the experiment session to test another displacement vector.
+7. Press **`Q`**: Exits the experiment.
+
+---
+
+### 📊 3. Statistical Metrics Calculated
+
+- **Mean Measured Movement ($\mu_{\Delta}$)**: Average displacement measured across real camera frames.
+- **Absolute Error ($E_{abs}$)**: $|\mu_{\text{measured}} - \text{Expected}|$ in mm.
+- **Percentage Error ($E_{\%}$)**: $\frac{|\mu_{\text{measured}} - \text{Expected}|}{\text{Expected}} \times 100\%$.
+- **Standard Deviation ($\sigma_{\Delta}$)**: Measurement precision/jitter across frames.
+- **3D Euclidean Error**: $\sqrt{(dX - Exp_X)^2 + (dY - Exp_Y)^2 + (dZ - Exp_Z)^2}$ (Mean, Min, Max in mm).
+
+---
+
+### 📁 4. CSV Schema (`data/accuracy_results.csv`)
+
+```csv
+Timestamp,Sample_ID,Expected_dX_mm,Expected_dY_mm,Expected_dZ_mm,Measured_dX_mm,Measured_dY_mm,Measured_dZ_mm,Error_dX_mm,Error_dY_mm,Error_dZ_mm,Euclidean_Error_mm
+2026-10-04 18:50:00,1,50.00,0.00,0.00,48.52,0.85,-0.32,-1.48,0.85,-0.32,1.74
+2026-10-04 18:50:01,2,50.00,0.00,0.00,49.10,0.42,-0.15,-0.90,0.42,-0.15,1.00
+```
+
+
 
 
 

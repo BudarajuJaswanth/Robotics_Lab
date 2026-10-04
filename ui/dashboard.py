@@ -356,6 +356,82 @@ class DashboardOverlay:
 
         return frame
 
+    def render_accuracy_eval_hud(
+        self,
+        frame: np.ndarray,
+        is_detected: bool,
+        expected_movement_mm: Tuple[float, float, float],
+        sample_count: int,
+        stats: Optional[Dict[str, Any]] = None,
+        status_message: str = ""
+    ) -> np.ndarray:
+        """
+        Renders Stage 7 physical accuracy evaluation HUD overlay.
+        """
+        overlay = frame.copy()
+        h, w = frame.shape[:2]
+
+        panel_w = 480
+        panel_h = 240
+        cv2.rectangle(overlay, (15, 15), (15 + panel_w, 15 + panel_h), (15, 15, 15), -1)
+        cv2.addWeighted(overlay, 0.82, frame, 0.18, 0, frame)
+
+        border_color = (0, 255, 0) if is_detected else (0, 0, 255)
+        cv2.rectangle(frame, (15, 15), (15 + panel_w, 15 + panel_h), border_color, 2)
+
+        # Title Banner
+        cv2.putText(frame, "STAGE 7: PHYSICAL ACCURACY EVALUATION", (30, 42), self.font, 0.52, (0, 255, 255), 2, cv2.LINE_AA)
+
+        exp_x, exp_y, exp_z = expected_movement_mm
+        cv2.putText(frame, f"Expected Movement : dX={exp_x:+.1f} dY={exp_y:+.1f} dZ={exp_z:+.1f} mm",
+                    (30, 68), self.font, 0.44, (200, 200, 200), 1, cv2.LINE_AA)
+
+        cv2.putText(frame, f"Collected Samples : {sample_count} frames from real webcam",
+                    (30, 92), self.font, 0.46, (255, 255, 255), 1, cv2.LINE_AA)
+
+        if stats is not None and stats["num_samples"] > 0:
+            mx, my, mz = stats["mean_measured_mm"]
+            ax, ay, az = stats["abs_error_mm"]
+            sx, sy, sz = stats["std_dev_mm"]
+            euc_err = stats["euclidean_error_mean_mm"]
+            pct_3d = stats["pct_error_3d"]
+
+            cv2.putText(frame, f"Mean Measured     : dX={mx:+.1f} dY={my:+.1f} dZ={mz:+.1f} mm",
+                        (30, 120), self.font, 0.45, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Absolute Error    : dX={ax:.1f} dY={ay:.1f} dZ={az:.1f} mm",
+                        (30, 145), self.font, 0.45, (255, 255, 0), 1, cv2.LINE_AA)
+            cv2.putText(frame, f"3D Mean Error     : {euc_err:.2f} mm ({pct_3d:.1f}%)",
+                        (30, 170), self.font, 0.52, (0, 255, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Standard Dev      : sX={sx:.1f} sY={sy:.1f} sZ={sz:.1f} mm",
+                        (30, 195), self.font, 0.44, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.putText(frame, f"Min/Max Error     : Min={stats['euclidean_error_min_mm']:.1f} mm | Max={stats['euclidean_error_max_mm']:.1f} mm",
+                        (30, 220), self.font, 0.42, (200, 200, 200), 1, cv2.LINE_AA)
+        else:
+            cv2.putText(frame, "STATUS: ACCUMULATING REAL WEBCAM SAMPLES...", (30, 130), self.font, 0.48, (0, 165, 255), 1, cv2.LINE_AA)
+            cv2.putText(frame, "Move physical object by expected displacement,", (30, 160), self.font, 0.44, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.putText(frame, "then press [SPACE] to capture evaluation samples.", (30, 185), self.font, 0.44, (200, 200, 200), 1, cv2.LINE_AA)
+
+        # Status Message Banner
+        if status_message:
+            cv2.rectangle(frame, (15, 265), (15 + panel_w, 295), (0, 120, 0), -1)
+            cv2.putText(frame, status_message, (25, 285), self.font, 0.46, (255, 255, 255), 1, cv2.LINE_AA)
+
+        # Bottom Controls Bar
+        cv2.rectangle(frame, (10, h - 40), (w - 10, h - 10), (0, 0, 0), -1)
+        cv2.putText(
+            frame,
+            "[SPACE] Capture Samples  |  [S] Save CSV Report  |  [R] Reset  |  [Q] Quit",
+            (20, h - 18),
+            self.font,
+            0.5,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA
+        )
+
+        return frame
+
+
 
 
 

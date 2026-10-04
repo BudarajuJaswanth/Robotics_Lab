@@ -1,10 +1,16 @@
 """
 AI and Robotics Lab - Real-Time 6-DoF Object Tracker
-Stage 5: Real Reference Pose Recording Entry Point
+Stage 7: Physical Accuracy Testing & Evaluation Entry Point
 
-Orchestrates live physical webcam ingestion, ArUco marker detection, Perspective-n-Point (PnP) 
-6-DoF pose estimation, baseline reference pose recording to reference/data.json via SPACE,
-persistence across application restarts, and real-time HUD rendering.
+Modes:
+  1. Tracking (--mode track): Real-time 6-DoF pose estimation, baseline reference locking,
+     and delta comparison telemetry.
+  2. Calibration (--mode calibrate): Physical chessboard corner detection, sub-pixel refinement,
+     cv2.calibrateCamera intrinsic matrix solver, and JSON persistence.
+  3. Verification (--mode verify): Real-time side-by-side comparison of raw webcam feed vs.
+     undistorted camera feed using saved JSON parameters.
+  4. Evaluation (--mode evaluate): Physical accuracy experiment mode comparing real webcam
+     measurements against user-provided ground-truth movement (Exp X, Y, Z in mm), exporting CSV.
 """
 
 import sys
@@ -18,6 +24,7 @@ from camera.calibration import CameraCalibrator
 from tracking.aruco_tracker import ArUcoTracker
 from tracking.pose_estimator import PoseEstimator
 from reference.reference_manager import ReferenceManager
+from tests.accuracy_evaluator import AccuracyEvaluator
 from ui.dashboard import DashboardOverlay
 
 logging.basicConfig(
@@ -29,8 +36,8 @@ logger = logging.getLogger("Main")
 
 def parse_args():
     parser = argparse.ArgumentParser(description="AI & Robotics Lab - Real-Time 6-DoF Object Tracker")
-    parser.add_argument("--mode", type=str, choices=["track", "calibrate", "verify"], default="track",
-                        help="Operation mode: 'track' for live 6-DoF pose estimation & reference recording, 'calibrate' for chessboard calibration, 'verify' for undistortion test (default: track)")
+    parser.add_argument("--mode", type=str, choices=["track", "calibrate", "verify", "evaluate"], default="track",
+                        help="Operation mode: 'track' for live pose & reference comparison, 'calibrate' for chessboard calibration, 'verify' for undistortion test, 'evaluate' for physical accuracy experiment (default: track)")
     parser.add_argument("--dict", type=str, default="DICT_6X6_250",
                         help="ArUco dictionary name (e.g. DICT_6X6_250, DICT_4X4_50, DICT_5X5_100, etc.) (default: DICT_6X6_250)")
     parser.add_argument("--marker-size", type=float, default=50.0,
@@ -43,7 +50,131 @@ def parse_args():
                         help="Calibration JSON file path (default: calibration_data/camera_calibration.json)")
     parser.add_argument("--reference-file", type=str, default="reference/data.json",
                         help="Reference pose JSON file path (default: reference/data.json)")
+    parser.add_argument("--exp-x", type=float, default=50.0, help="Expected ground-truth physical movement along X in mm (default: 50.0)")
+    parser.add_argument("--exp-y", type=float, default=0.0, help="Expected ground-truth physical movement along Y in mm (default: 0.0)")
+    parser.add_argument("--exp-z", type=float, default=0.0, help="Expected ground-truth physical movement along Z in mm (default: 0.0)")
+    parser.add_argument("--output-csv", type=str, default="data/accuracy_results.csv", help="Accuracy evaluation output CSV path (default: data/accuracy_results.csv)")
     return parser.parse_args()
+
+
+def run_evaluation_mode(args) -> None:
+    logger.info("Initializing Stage 7: Physical Accuracy Testing Mode...")
+    logger.info(f"Ground-Truth Expected Movement: Exp_X={args.exp_x} mm, Exp_Y={args.exp_y} mm, Exp_Z={args.exp_z} mm")
+
+    calibrator = CameraCalibrator()
+    if not calibrator.load_calibration(args.calibration_file):
+        logger.error("\n" + "=" * 70)
+        logger.error(f"❌ ERROR: Calibration file '{args.calibration_file}' does not exist or is invalid!")
+        logger.error("Accuracy testing requires valid camera calibration parameters.")
+        logger.error("Please run the calibration stage first using:")
+        logger.error("    python main.py --mode calibrate")
+        logger.error("=" * 70 + "\n")
+        sys.exit(1)
+
+    aruco_tracker = ArUcoTracker(dictionary_name=args.dict, marker_size_mm=args.marker_size)
+    pose_estimator = PoseEstimator(marker_size_mm=args.marker_size)
+    ref_manager = ReferenceManager(filepath=args.reference_file)
+    evaluator = AccuracyEvaluator(
+        expected_movement_mm=(args.exp_x, args.exp_y, args.exp_z),
+        output_csv=args.output_csv
+    )
+    camera_manager = CameraManager(camera_id=args.camera_id, target_width=1280, target_height=720)
+    dashboard = DashboardOverlay()
+
+    if not camera_manager.start():
+        logger.critical("❌ ERROR: Failed to open physical camera stream.")
+        sys.exit(1)
+
+    window_name = "AI & Robotics Lab - Stage 7: Physical Accuracy Testing"
+    cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
+
+    status_message = "1. Press [SPACE] to lock reference pose. 2. Move physical object. 3. Press [SPACE] to collect samples."
+    logger.info("Controls: [SPACE] Lock Ref / Collect Samples | [S] Save CSV | [R] Reset | [Q] Quit")
+
+    try:
+        while True:
+            success, raw_frame = camera_manager.get_frame()
+            if not success or raw_frame is None:
+                continue
+
+            is_detected, marker_ids, corners, meta = aruco_tracker.detect_markers(raw_frame)
+
+            display_frame = raw_frame.copy()
+            pose_data = None
+            primary_id = None
+            delta_data = None
+
+            if is_detected and len(corners) > 0:
+                display_frame = aruco_tracker.draw_corners(display_frame, corners, marker_ids)
+                primary_id = marker_ids[0]
+
+                pose_success, pose_data = pose_estimator.estimate_pose(
+                    corners[0], calibrator.camera_matrix, calibrator.dist_coeffs
+                )
+
+                if pose_success and pose_data is not None:
+                    rvec = pose_data["rvec"]
+                    tvec = pose_data["tvec"]
+                    axis_len = pose_estimator.marker_size_m
+                    if hasattr(cv2, "drawFrameAxes"):
+                        cv2.drawFrameAxes(display_frame, calibrator.camera_matrix, calibrator.dist_coeffs, rvec, tvec, axis_len)
+
+                    if ref_manager.has_reference():
+                        delta_data = ref_manager.calculate_delta(pose_data)
+
+            # Render Accuracy Evaluation HUD
+            stats = evaluator.compute_statistics()
+            display_frame = dashboard.render_accuracy_eval_hud(
+                display_frame,
+                is_detected=is_detected and (pose_data is not None),
+                expected_movement_mm=(args.exp_x, args.exp_y, args.exp_z),
+                sample_count=len(evaluator.samples),
+                stats=stats,
+                status_message=status_message
+            )
+
+            cv2.imshow(window_name, display_frame)
+
+            key = cv2.waitKey(1) & 0xFF
+
+            # [SPACE] -> Lock baseline reference or collect real sample
+            if key == 32:
+                if is_detected and pose_data is not None and primary_id is not None:
+                    if not ref_manager.has_reference():
+                        ref_manager.save_reference_pose(primary_id, pose_data)
+                        status_message = "Baseline reference LOCKED! Move object, then press [SPACE] to capture."
+                    else:
+                        if delta_data is not None:
+                            meas_delta = (delta_data["delta_X_mm"], delta_data["delta_Y_mm"], delta_data["delta_Z_mm"])
+                            evaluator.add_sample(meas_delta)
+                            status_message = f"Captured Sample #{len(evaluator.samples)}!"
+                else:
+                    status_message = "Cannot sample: physical ArUco marker lost!"
+
+            # [S] -> Export CSV report & print terminal summary
+            elif key == ord('s') or key == ord('S'):
+                if evaluator.save_csv():
+                    summary_text = evaluator.format_summary_report()
+                    print(summary_text)
+                    status_message = f"Saved CSV: {args.output_csv}"
+
+            # [R] -> Reset evaluation experiment
+            elif key == ord('r') or key == ord('R'):
+                evaluator.reset()
+                ref_manager.clear_reference()
+                status_message = "Reset evaluation experiment and reference."
+
+            # [Q] or [ESC] -> Quit
+            elif key == ord('q') or key == ord('Q') or key == 27:
+                if len(evaluator.samples) > 0:
+                    evaluator.save_csv()
+                    print(evaluator.format_summary_report())
+                logger.info("Exiting accuracy evaluation mode...")
+                break
+
+    finally:
+        camera_manager.stop()
+        cv2.destroyAllWindows()
 
 
 def run_tracking_mode(args) -> None:
@@ -87,7 +218,6 @@ def run_tracking_mode(args) -> None:
             if not success or raw_frame is None:
                 continue
 
-            # Detect ArUco marker in physical camera frame
             is_detected, marker_ids, corners, meta = aruco_tracker.detect_markers(raw_frame)
 
             display_frame = raw_frame.copy()
@@ -98,13 +228,11 @@ def run_tracking_mode(args) -> None:
                 display_frame = aruco_tracker.draw_corners(display_frame, corners, marker_ids)
                 primary_id = marker_ids[0]
 
-                # Estimate 6-DoF Pose (PnP IPPE Square Solver)
                 pose_success, pose_data = pose_estimator.estimate_pose(
                     corners[0], calibrator.camera_matrix, calibrator.dist_coeffs
                 )
 
                 if pose_success and pose_data is not None:
-                    # Draw 3D Coordinate Frame Axes (X: Red, Y: Green, Z: Blue)
                     rvec = pose_data["rvec"]
                     tvec = pose_data["tvec"]
                     axis_len = pose_estimator.marker_size_m
@@ -113,7 +241,6 @@ def run_tracking_mode(args) -> None:
                     elif hasattr(cv2.aruco, "drawAxis"):
                         cv2.aruco.drawAxis(display_frame, calibrator.camera_matrix, calibrator.dist_coeffs, rvec, tvec, axis_len)
 
-            # Render 6-DoF Telemetry and Reference HUD Overlay
             delta_data = None
             if is_detected and pose_data is not None and ref_manager.has_reference():
                 delta_data = ref_manager.calculate_delta(pose_data)
@@ -132,8 +259,6 @@ def run_tracking_mode(args) -> None:
 
             key = cv2.waitKey(1) & 0xFF
 
-
-            # [SPACE] -> Record/Save current real pose as reference
             if key == 32:
                 if is_detected and pose_data is not None and primary_id is not None:
                     ok, msg = ref_manager.save_reference_pose(
@@ -144,13 +269,11 @@ def run_tracking_mode(args) -> None:
                     status_message = "Cannot save reference: marker pose unavailable."
                     logger.warning(status_message)
 
-            # [R] -> Clear reference pose
             elif key == ord('r') or key == ord('R'):
                 ok, msg = ref_manager.clear_reference()
                 status_message = msg
                 logger.info(msg)
 
-            # [Q] or [ESC] -> Quit
             elif key == ord('q') or key == ord('Q') or key == 27:
                 logger.info("Exiting 6-DoF tracking mode...")
                 break
@@ -301,6 +424,8 @@ def main() -> None:
         run_calibration_mode(args)
     elif args.mode == "verify":
         run_verification_mode(args)
+    elif args.mode == "evaluate":
+        run_evaluation_mode(args)
     else:
         run_tracking_mode(args)
 
