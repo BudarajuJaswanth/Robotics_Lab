@@ -91,11 +91,18 @@ def run_evaluation_mode(args) -> str:
     status_message = "1. Press [SPACE] to lock reference pose. 2. Move physical object. 3. Press [SPACE] to collect samples."
     logger.info("Controls: [SPACE] Lock Ref / Collect Samples | [S] Save CSV | [R] Reset | [C] Calibrate | [T] Track | [Q] Quit")
 
+    consecutive_failures = 0
     try:
         while True:
             success, raw_frame = camera_manager.get_frame()
             if not success or raw_frame is None:
+                consecutive_failures += 1
+                if consecutive_failures > 60:
+                    logger.error("❌ Camera stream disconnected or failed. Exiting evaluation mode...")
+                    return "quit"
+                cv2.waitKey(10)
                 continue
+            consecutive_failures = 0
 
             is_detected, marker_ids, corners, meta = aruco_tracker.detect_markers(raw_frame)
 
@@ -221,11 +228,18 @@ def run_tracking_mode(args) -> str:
 
     logger.info("Controls: [SPACE] Save Ref | [R] Reset Ref | [C] Calibrate | [T] Track | [A] Accuracy | [Q] Quit")
 
+    consecutive_failures = 0
     try:
         while True:
             success, raw_frame = camera_manager.get_frame()
             if not success or raw_frame is None:
+                consecutive_failures += 1
+                if consecutive_failures > 60:
+                    logger.error("❌ Camera stream disconnected or failed. Exiting tracking mode...")
+                    return "quit"
+                cv2.waitKey(10)
                 continue
+            consecutive_failures = 0
 
             is_detected, marker_ids, corners, meta = aruco_tracker.detect_markers(raw_frame)
 
@@ -327,11 +341,18 @@ def run_calibration_mode(args) -> str:
     status_message = "Point webcam at physical printed chessboard pattern."
     logger.info("Controls: [SPACE] Capture Frame | [C] Calibrate | [R] Reset | [T] Track | [A] Accuracy | [Q] Quit")
 
+    consecutive_failures = 0
     try:
         while True:
             success, raw_frame = camera_manager.get_frame()
             if not success or raw_frame is None:
+                consecutive_failures += 1
+                if consecutive_failures > 60:
+                    logger.error("❌ Camera stream disconnected or failed. Exiting calibration mode...")
+                    return "quit"
+                cv2.waitKey(10)
                 continue
+            consecutive_failures = 0
 
             found, refined_corners, display_frame = calibrator.detect_chessboard(raw_frame)
 
@@ -417,11 +438,18 @@ def run_verification_mode(args) -> str:
     window_name = "AI & Robotics Lab - 6-DoF Object Tracker Dashboard"
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
+    consecutive_failures = 0
     try:
         while True:
             success, raw_frame = camera_manager.get_frame()
             if not success or raw_frame is None:
+                consecutive_failures += 1
+                if consecutive_failures > 60:
+                    logger.error("❌ Camera stream disconnected or failed. Exiting verification mode...")
+                    return "quit"
+                cv2.waitKey(10)
                 continue
+            consecutive_failures = 0
 
             undistorted_frame = cv2.remap(raw_frame, mapx, mapy, cv2.INTER_LINEAR)
 
