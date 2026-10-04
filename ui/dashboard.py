@@ -118,3 +118,54 @@ class DashboardOverlay:
 
         return frame
 
+    def render_verification_hud(
+        self,
+        frame_original: np.ndarray,
+        frame_undistorted: np.ndarray,
+        rms_error: Optional[float],
+        resolution: Tuple[int, int]
+    ) -> np.ndarray:
+        """
+        Renders a side-by-side verification HUD comparing original camera feed and undistorted feed.
+        """
+        h_orig, w_orig = frame_original.shape[:2]
+
+        # Draw section headers on each feed image
+        orig_view = frame_original.copy()
+        undist_view = frame_undistorted.copy()
+
+        cv2.rectangle(orig_view, (10, 10), (320, 45), (0, 0, 0), -1)
+        cv2.putText(orig_view, "ORIGINAL FEED (Distorted)", (20, 32), self.font, 0.55, (0, 165, 255), 2, cv2.LINE_AA)
+
+        cv2.rectangle(undist_view, (10, 10), (360, 45), (0, 0, 0), -1)
+        cv2.putText(undist_view, "UNDISTORTED FEED (Lens Corrected)", (20, 32), self.font, 0.55, (0, 255, 0), 2, cv2.LINE_AA)
+
+        # Concatenate side-by-side
+        combined = np.hstack([orig_view, undist_view])
+        ch, cw = combined.shape[:2]
+
+        # Top overlay banner across center
+        panel_w = 460
+        panel_h = 100
+        panel_x = (cw - panel_w) // 2
+        
+        overlay = combined.copy()
+        cv2.rectangle(overlay, (panel_x, 10), (panel_x + panel_w, 10 + panel_h), (15, 15, 15), -1)
+        cv2.addWeighted(overlay, 0.8, combined, 0.2, 0, combined)
+        cv2.rectangle(combined, (panel_x, 10), (panel_x + panel_w, 10 + panel_h), (0, 255, 0), 2)
+
+        # Telemetry Text
+        cv2.putText(combined, "CALIBRATION VERIFICATION MODE", (panel_x + 20, 35), self.font, 0.55, (0, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(combined, "Calibration: LOADED", (panel_x + 20, 60), self.font, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+        
+        rms_str = f"{rms_error:.4f} px" if rms_error is not None else "N/A"
+        cv2.putText(combined, f"RMS Error: {rms_str}", (panel_x + 220, 60), self.font, 0.5, (255, 255, 0), 1, cv2.LINE_AA)
+        cv2.putText(combined, f"Camera Resolution: {resolution[0]}x{resolution[1]}", (panel_x + 20, 85), self.font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+        # Bottom Controls bar
+        cv2.rectangle(combined, (10, ch - 40), (cw - 10, ch - 10), (0, 0, 0), -1)
+        cv2.putText(combined, "[Q] / [ESC] Quit Verification Mode", (20, ch - 18), self.font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+        return combined
+
+

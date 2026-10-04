@@ -115,23 +115,18 @@ To achieve a low **RMS Reprojection Error (< 0.5 px)**, capture at least **10–
 When you press **`C`**, OpenCV calculates the intrinsic matrix and saves the resulting configuration to:
 `calibration_data/camera_calibration.json`
 
-```json
-{
-    "camera_matrix": [
-        [920.45, 0.0, 640.12],
-        [0.0, 921.10, 359.85],
-        [0.0, 0.0, 1.0]
-    ],
-    "dist_coeffs": [
-        [0.051, -0.12, 0.001, 0.002, 0.08]
-    ],
-    "rms_reprojection_error": 0.3245,
-    "pattern_size_inner_corners": [9, 6],
-    "square_size_mm": 25.0,
-    "image_width": 1280,
-    "image_height": 720,
-    "num_captured_frames": 14,
-    "timestamp": "2026-10-04 18:25:00"
-}
+### 🔍 6. Running Calibration Verification Mode
+
+After generating your `calibration_data/camera_calibration.json` file, run the verification mode to inspect real-time lens distortion correction:
+
+```bash
+python main.py --mode verify
 ```
+
+- Displays a live side-by-side feed:
+  - **Left**: Raw physical webcam feed (`ORIGINAL FEED`)
+  - **Right**: Lens corrected feed using `cv2.remap` and your saved intrinsic matrix (`UNDISTORTED FEED`)
+- Shows HUD statistics: `Calibration: LOADED`, `RMS Error: ...`, and `Camera Resolution: ...`.
+- Press **`Q`** or **`ESC`** to exit.
+
 
