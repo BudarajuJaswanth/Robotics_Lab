@@ -64,32 +64,74 @@ RealTime_6DOF_Object_Tracker/
 
 ---
 
-## 🛠️ Setup & Prerequisites
+## 🏁 Stage 2: Physical Camera Calibration Guide
 
-### Prerequisites
-- **Python 3.9+**
-- Physical built-in or USB Webcam
-- Printed Chessboard target (for calibration)
-- Printed ArUco marker target (e.g., `DICT_6X6_250`)
+Camera calibration calculates the intrinsic parameters (focal length $f_x, f_y$, principal point $c_x, c_y$) and lens distortion coefficients ($k_1, k_2, p_1, p_2, k_3$) of your physical laptop webcam.
 
-### Installation
+### 📄 1. Printing & Preparing the Physical Chessboard Target
+1. **Download/Generate a standard 10x7 square chessboard pattern** (or 9x6 inner corners pattern).
+2. **Print at 100% scale**: When printing, ensure scale is set to **Actual Size (100%)**. Do not select "Fit to Printable Area".
+3. **Mount Rigidly**: Tape or glue the printed paper onto a flat, rigid board (such as cardboard, clipboard, or foam board). *Bended paper creates lens distortion errors!*
+4. **Measure Square Size**: Use a physical ruler to measure the exact length of one black square edge in millimeters (e.g. `25.0` mm or `30.0` mm).
+
+---
+
+### 📷 2. Running Stage 2 Calibration
 
 ```bash
-# Clone or open project directory
-cd RealTime_6DOF_Object_Tracker
+# Run calibration with default 9x6 inner corners and 25.0 mm square size
+python main.py
 
-# Create virtual environment (optional but recommended)
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
+# Or customize inner corners and square size via CLI arguments
+python main.py --cols 9 --rows 6 --square-size 25.0 --output calibration_data/camera_calibration.json
 ```
 
 ---
 
-## 🚀 Running the Application
+### 🎮 3. Keyboard Controls During Live Calibration
 
-```bash
-python main.py
+| Key | Action | Description |
+| :--- | :--- | :--- |
+| **`SPACE`** | **Capture View** | Captures the current frame when green chessboard corners are visible. |
+| **`C`** | **Calibrate & Save** | Calculates OpenCV intrinsic matrix & saves parameters to JSON. |
+| **`R`** | **Reset** | Clears all captured calibration views to start over. |
+| **`Q` / `ESC`** | **Quit** | Exits the calibration tool safely. |
+
+---
+
+### 📐 4. Physical Positioning Strategy for High Accuracy
+To achieve a low **RMS Reprojection Error (< 0.5 px)**, capture at least **10–15 views** covering your camera's field of view:
+1. **Distance**: Capture views close to the camera, at medium distance, and further away.
+2. **Screen Coverage**: Position the target in all 4 corners (top-left, top-right, bottom-left, bottom-right) and center.
+3. **Angles & Tilts**: Tilt the chessboard target physically:
+   - Pitch: Tilt forward and backward (~15° to 30°).
+   - Yaw: Rotate left and right (~15° to 30°).
+   - Roll: Rotate clockwise and counter-clockwise in the plane.
+
+---
+
+### 💾 5. Calibration Persistence Output
+
+When you press **`C`**, OpenCV calculates the intrinsic matrix and saves the resulting configuration to:
+`calibration_data/camera_calibration.json`
+
+```json
+{
+    "camera_matrix": [
+        [920.45, 0.0, 640.12],
+        [0.0, 921.10, 359.85],
+        [0.0, 0.0, 1.0]
+    ],
+    "dist_coeffs": [
+        [0.051, -0.12, 0.001, 0.002, 0.08]
+    ],
+    "rms_reprojection_error": 0.3245,
+    "pattern_size_inner_corners": [9, 6],
+    "square_size_mm": 25.0,
+    "image_width": 1280,
+    "image_height": 720,
+    "num_captured_frames": 14,
+    "timestamp": "2026-10-04 18:25:00"
+}
 ```
+

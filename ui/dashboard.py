@@ -55,3 +55,66 @@ class DashboardOverlay:
             cv2.putText(frame, f"dRx/dRy/dRz: {drx:+.1f} {dry:+.1f} {drz:+.1f}", (20, 145), self.font, 0.5, (0, 255, 0), 1)
 
         return frame
+
+    def render_calibration_hud(
+        self,
+        frame: np.ndarray,
+        chessboard_detected: bool,
+        num_frames_captured: int,
+        rms_error: Optional[float] = None,
+        status_message: str = "",
+        pattern_size: Tuple[int, int] = (9, 6),
+        square_size_mm: float = 25.0
+    ) -> np.ndarray:
+        """
+        Renders live calibration HUD overlay:
+        - Chessboard detection state
+        - Number of captured calibration views
+        - Calculated RMS reprojection error
+        - Keyboard controls guide (SPACE, C, R, Q)
+        """
+        overlay = frame.copy()
+        h, w = frame.shape[:2]
+
+        # Top banner panel
+        panel_h = 160
+        cv2.rectangle(overlay, (10, 10), (520, 10 + panel_h), (20, 20, 20), -1)
+        cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
+        
+        border_color = (0, 255, 0) if chessboard_detected else (0, 165, 255)
+        cv2.rectangle(frame, (10, 10), (520, 10 + panel_h), border_color, 2)
+
+        # Title & Pattern Config
+        cv2.putText(frame, "STAGE 2: CAMERA CALIBRATION", (25, 35), self.font, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(frame, f"Grid: {pattern_size[0]}x{pattern_size[1]} inner corners | Square: {square_size_mm:.1f} mm", 
+                    (25, 60), self.font, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
+
+        # Chessboard Detection Status
+        if chessboard_detected:
+            cv2.putText(frame, "STATUS: CHESSBOARD DETECTED [Ready for SPACE]", (25, 85), self.font, 0.5, (0, 255, 0), 2, cv2.LINE_AA)
+        else:
+            cv2.putText(frame, "STATUS: SEARCHING CHESSBOARD...", (25, 85), self.font, 0.5, (0, 165, 255), 1, cv2.LINE_AA)
+
+        # Frame Count & Reprojection Error
+        cv2.putText(frame, f"Captured Views: {num_frames_captured} / 5+ minimum", (25, 110), self.font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+        if rms_error is not None:
+            cv2.putText(frame, f"RMS Error: {rms_error:.4f} px (Calibrated)", (25, 135), self.font, 0.55, (0, 255, 0), 2, cv2.LINE_AA)
+        elif status_message:
+            cv2.putText(frame, f"Info: {status_message[:45]}", (25, 135), self.font, 0.45, (255, 255, 0), 1, cv2.LINE_AA)
+
+        # Bottom Controls Bar
+        cv2.rectangle(frame, (10, h - 45), (w - 10, h - 10), (0, 0, 0), -1)
+        cv2.putText(
+            frame,
+            "[SPACE] Capture Frame  |  [C] Calculate Calibration  |  [R] Reset Frames  |  [Q] Quit",
+            (20, h - 22),
+            self.font,
+            0.48,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA
+        )
+
+        return frame
+
