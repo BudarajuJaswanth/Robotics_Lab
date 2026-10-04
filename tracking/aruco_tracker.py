@@ -80,7 +80,7 @@ class ArUcoTracker:
             corners, ids, rejected = cv2.aruco.detectMarkers(gray, self.dictionary, parameters=self.parameters)
 
         if ids is not None and len(ids) > 0:
-            flat_ids = [int(i[0]) for i in ids]
+            flat_ids = [int(x) for x in np.ravel(ids)]
             corner_list = [c for c in corners]
             meta = {
                 "count": len(flat_ids),
@@ -96,7 +96,7 @@ class ArUcoTracker:
         if not corners or not ids:
             return frame
 
-        np_ids = np.array([[i] for i in ids], dtype=np.int32)
+        np_ids = np.array(ids, dtype=np.int32).reshape(-1, 1)
         cv2.aruco.drawDetectedMarkers(frame, corners, np_ids)
         return frame
 

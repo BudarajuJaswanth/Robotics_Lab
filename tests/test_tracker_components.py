@@ -163,6 +163,14 @@ class TestArUcoTracker(unittest.TestCase):
         self.assertEqual(tracker.dictionary_name, "DICT_6X6_250")
         self.assertEqual(tracker.marker_size_m, 0.05)
 
+    def test_detect_markers_1d_and_2d_ids(self):
+        tracker = ArUcoTracker(dictionary_name="DICT_6X6_250", marker_size_mm=50.0)
+        dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        # Verify detection method handles black frame without error
+        is_detected, flat_ids, corners, meta = tracker.detect_markers(dummy_frame)
+        self.assertFalse(is_detected)
+        self.assertEqual(flat_ids, [])
+
 
 class TestCameraCalibrator(unittest.TestCase):
 
