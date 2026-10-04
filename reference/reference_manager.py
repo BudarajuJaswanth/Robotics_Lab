@@ -111,3 +111,46 @@ class ReferenceManager:
                 logger.warning(f"Could not delete reference file {self.filepath}: {e}")
         return True, "REFERENCE: CLEARED"
 
+    def calculate_delta(self, curr_pose_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Computes real physical translation deltas (dX, dY, dZ in mm) and rotation deltas
+        (dRx, dRy, dRz in degrees) between current observed pose and stored baseline reference.
+        """
+        if not self.has_reference() or self.ref_data is None or self.ref_transform is None:
+            return None
+
+        if curr_pose_data is None:
+            return None
+
+        rvec_curr = curr_pose_data["rvec"]
+        tvec_curr = curr_pose_data["tvec"]
+        T_curr = SpatialTransformations.rvec_tvec_to_matrix(rvec_curr, tvec_curr)
+
+        # SE(3) Rigid body relative transformation: T_rel = T_ref^(-1) * T_curr
+        ref_inv = np.linalg.inv(self.ref_transform)
+        T_rel = ref_inv @ T_curr
+
+        rel_rvec, rel_tvec = SpatialTransformations.matrix_to_rvec_tvec(T_rel)
+        dRx, dRy, dRz = SpatialTransformations.rvec_to_euler_angles(rel_rvec)
+
+        # Coordinate difference deltas in physical millimeters
+        curr_x, curr_y, curr_z = curr_pose_data["translation_mm"]
+        ref_x = self.ref_data["X"]
+        ref_y = self.ref_data["Y"]
+        ref_z = self.ref_data["Z"]
+
+        dX_mm = curr_x - ref_x
+        dY_mm = curr_y - ref_y
+        dZ_mm = curr_z - ref_z
+
+        return {
+            "delta_X_mm": float(dX_mm),
+            "delta_Y_mm": float(dY_mm),
+            "delta_Z_mm": float(dZ_mm),
+            "delta_Rx_deg": float(dRx),
+            "delta_Ry_deg": float(dRy),
+            "delta_Rz_deg": float(dRz),
+            "rel_matrix": T_rel
+        }
+
+

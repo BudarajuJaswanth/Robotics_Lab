@@ -114,18 +114,24 @@ def run_tracking_mode(args) -> None:
                         cv2.aruco.drawAxis(display_frame, calibrator.camera_matrix, calibrator.dist_coeffs, rvec, tvec, axis_len)
 
             # Render 6-DoF Telemetry and Reference HUD Overlay
+            delta_data = None
+            if is_detected and pose_data is not None and ref_manager.has_reference():
+                delta_data = ref_manager.calculate_delta(pose_data)
+
             display_frame = dashboard.render_6dof_pose_hud(
                 display_frame,
                 is_detected=is_detected and (pose_data is not None),
                 marker_id=primary_id,
                 pose_data=pose_data,
                 ref_data=ref_manager.ref_data,
+                delta_data=delta_data,
                 status_message=status_message
             )
 
             cv2.imshow(window_name, display_frame)
 
             key = cv2.waitKey(1) & 0xFF
+
 
             # [SPACE] -> Record/Save current real pose as reference
             if key == 32:

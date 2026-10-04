@@ -254,6 +254,37 @@ Stage 5 allows locking a baseline reference pose ($X, Y, Z, R_x, R_y, R_z$) from
 }
 ```
 
+---
+
+## ⚡ Stage 6: REAL-TIME Reference Comparison & Delta Telemetry
+
+Stage 6 computes real-time 6-DoF spatial translation deltas ($\Delta X, \Delta Y, \Delta Z$ in mm) and rotation deltas ($\Delta R_x, \Delta R_y, \Delta R_z$ in degrees) relative to your locked baseline reference.
+
+### 📊 1. Screen Status Badges & HUD Display
+
+- **Tracking Status Badges**:
+  - `TRACKING` (Green badge): Physical ArUco marker is actively tracked.
+  - `TRACKING LOST` (Red badge): Marker is out of view. *(Missing detections are never treated as zero movement).*
+- **Reference Status Badges**:
+  - `REFERENCE SAVED` (Blue/Green badge): Persistent reference loaded from `reference/data.json`.
+  - `REFERENCE NOT SAVED` (Orange badge): Baseline reference not recorded yet.
+
+### 🖥️ 2. Real-Time Telemetry Panels
+
+```text
+CURRENT POSE [ID: 23]       REFERENCE POSE [ID: 23]
+TRANSLATION (mm):            REF X: +124.5  Y: -45.2  Z: +450.8 mm
+X:   +140.2 mm
+Y:    -40.1 mm               CHANGE (TRANSLATION DELTA):
+Z:   +465.0 mm               dX:   +15.7 mm
+                             dY:    +5.1 mm
+ROTATION (Euler deg):        dZ:   +14.2 mm
+Rx:   +14.5 deg
+Ry:    -6.4 deg               ROTATION CHANGE (DELTA EULER):
+Rz:  +178.7 deg               dRx:  +2.1 | dRy: -1.3 | dRz: +0.5 deg
+```
+
+
 
 
 

@@ -229,75 +229,123 @@ class DashboardOverlay:
         marker_id: Optional[int] = None,
         pose_data: Optional[Dict[str, Any]] = None,
         ref_data: Optional[Dict[str, Any]] = None,
+        delta_data: Optional[Dict[str, Any]] = None,
         status_message: str = ""
     ) -> np.ndarray:
         """
-        Renders live raw 6-DoF pose telemetry panel and saved baseline reference pose panel.
+        Renders Stage 6 HUD telemetry with:
+        - Status badges: TRACKING vs TRACKING LOST | REFERENCE SAVED vs REFERENCE NOT SAVED
+        - REFERENCE panel (X, Y, Z mm, Rx, Ry, Rz deg)
+        - CURRENT panel (X, Y, Z mm, Rx, Ry, Rz deg)
+        - CHANGE panel (dX, dY, dZ mm)
+        - ROTATION CHANGE panel (dRx, dRy, dRz deg)
         """
         overlay = frame.copy()
         h, w = frame.shape[:2]
 
-        # Left Panel: Live Current 6-DoF Pose
-        panel_w = 420
+        panel_w = 380
         panel_h = 240
-        cv2.rectangle(overlay, (15, 15), (15 + panel_w, 15 + panel_h), (15, 15, 15), -1)
+
+        # Draw Left Panel (Current Pose)
+        cv2.rectangle(overlay, (15, 55), (15 + panel_w, 55 + panel_h), (15, 15, 15), -1)
         
-        # Right Panel: Saved Reference Pose (if available)
+        # Draw Right Panel (Reference Pose & Delta Comparison)
         ref_x = w - panel_w - 15
+        cv2.rectangle(overlay, (ref_x, 55), (ref_x + panel_w, 55 + panel_h), (15, 15, 15), -1)
+
+        cv2.addWeighted(overlay, 0.82, frame, 0.18, 0, frame)
+
+        # ------------------- TOP STATUS BADGES -------------------
+        # Badge 1: Tracking Status
+        if is_detected:
+            cv2.rectangle(frame, (15, 12), (185, 45), (0, 160, 0), -1)
+            cv2.putText(frame, "TRACKING", (35, 35), self.font, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
+        else:
+            cv2.rectangle(frame, (15, 12), (210, 45), (0, 0, 200), -1)
+            cv2.putText(frame, "TRACKING LOST", (25, 35), self.font, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
+
+        # Badge 2: Reference Status
         if ref_data is not None:
-            cv2.rectangle(overlay, (ref_x, 15), (ref_x + panel_w, 15 + panel_h), (15, 15, 15), -1)
+            cv2.rectangle(frame, (225, 12), (450, 45), (0, 140, 180), -1)
+            cv2.putText(frame, "REFERENCE SAVED", (235, 35), self.font, 0.52, (255, 255, 255), 2, cv2.LINE_AA)
+        else:
+            cv2.rectangle(frame, (225, 12), (480, 45), (0, 120, 200), -1)
+            cv2.putText(frame, "REFERENCE NOT SAVED", (235, 35), self.font, 0.52, (255, 255, 255), 2, cv2.LINE_AA)
 
-        cv2.addWeighted(overlay, 0.8, frame, 0.2, 0, frame)
-
-        # Draw Left Panel Border
-        border_color = (0, 255, 0) if is_detected else (0, 165, 255)
-        cv2.rectangle(frame, (15, 15), (15 + panel_w, 15 + panel_h), border_color, 2)
+        # ------------------- LEFT PANEL: CURRENT POSE -------------------
+        left_border = (0, 255, 0) if is_detected else (0, 0, 255)
+        cv2.rectangle(frame, (15, 55), (15 + panel_w, 55 + panel_h), left_border, 2)
 
         if is_detected and pose_data is not None:
             tx, ty, tz = pose_data["translation_mm"]
             rx, ry, rz = pose_data["rotation_deg"]
 
-            cv2.putText(frame, f"CURRENT POSE [ID: {marker_id}] (RAW)", (30, 42), self.font, 0.52, (0, 255, 255), 2, cv2.LINE_AA)
-            cv2.putText(frame, "TRANSLATION (mm):", (30, 70), self.font, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
-            cv2.putText(frame, f"X: {tx:+8.1f} mm", (50, 95), self.font, 0.55, (0, 255, 0), 2, cv2.LINE_AA)
-            cv2.putText(frame, f"Y: {ty:+8.1f} mm", (50, 120), self.font, 0.55, (0, 255, 0), 2, cv2.LINE_AA)
-            cv2.putText(frame, f"Z: {tz:+8.1f} mm", (50, 145), self.font, 0.55, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"CURRENT POSE [ID: {marker_id}]", (30, 80), self.font, 0.52, (0, 255, 255), 2, cv2.LINE_AA)
+            
+            cv2.putText(frame, "TRANSLATION (mm):", (30, 105), self.font, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.putText(frame, f"X: {tx:+8.1f} mm", (50, 128), self.font, 0.52, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Y: {ty:+8.1f} mm", (50, 150), self.font, 0.52, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Z: {tz:+8.1f} mm", (50, 172), self.font, 0.52, (0, 255, 0), 2, cv2.LINE_AA)
 
-            cv2.putText(frame, "ROTATION (Euler Degrees):", (30, 172), self.font, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
-            cv2.putText(frame, f"Rx (Pitch): {rx:+6.1f} deg", (50, 195), self.font, 0.52, (255, 255, 0), 2, cv2.LINE_AA)
-            cv2.putText(frame, f"Ry (Yaw)  : {ry:+6.1f} deg", (50, 218), self.font, 0.52, (255, 255, 0), 2, cv2.LINE_AA)
-            cv2.putText(frame, f"Rz (Roll) : {rz:+6.1f} deg", (50, 241), self.font, 0.52, (255, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, "ROTATION (Euler deg):", (30, 198), self.font, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.putText(frame, f"Rx: {rx:+6.1f} deg", (50, 220), self.font, 0.5, (255, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Ry: {ry:+6.1f} deg", (50, 242), self.font, 0.5, (255, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Rz: {rz:+6.1f} deg", (50, 264), self.font, 0.5, (255, 255, 0), 2, cv2.LINE_AA)
         else:
-            cv2.putText(frame, "CURRENT POSE (RAW UNFILTERED)", (30, 45), self.font, 0.55, (0, 165, 255), 2, cv2.LINE_AA)
-            cv2.putText(frame, "STATUS: ARUCO MARKER NOT DETECTED", (30, 85), self.font, 0.5, (0, 165, 255), 1, cv2.LINE_AA)
-            cv2.putText(frame, "Point laptop camera at physical ArUco target...", (30, 115), self.font, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.putText(frame, "CURRENT POSE", (30, 85), self.font, 0.55, (0, 0, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, "⚠️ TRACKING LOST", (30, 130), self.font, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, "Target ArUco marker is missing!", (30, 165), self.font, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.putText(frame, "Point camera at physical marker...", (30, 190), self.font, 0.45, (160, 160, 160), 1, cv2.LINE_AA)
 
-        # Draw Right Panel (Reference Pose)
+        # ------------------- RIGHT PANEL: REFERENCE & DELTAS -------------------
+        right_border = (0, 255, 255) if ref_data is not None else (100, 100, 100)
+        cv2.rectangle(frame, (ref_x, 55), (ref_x + panel_w, 55 + panel_h), right_border, 2)
+
         if ref_data is not None:
-            cv2.rectangle(frame, (ref_x, 15), (ref_x + panel_w, 15 + panel_h), (255, 255, 0), 2)
-            cv2.putText(frame, f"REFERENCE: SAVED [ID: {ref_data.get('marker_id')}]", (ref_x + 15, 42), self.font, 0.52, (0, 255, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"REFERENCE POSE [ID: {ref_data.get('marker_id')}]", (ref_x + 15, 80), self.font, 0.5, (0, 255, 255), 2, cv2.LINE_AA)
+            
+            # Reference Position Values
+            rx_val = ref_data["X"]
+            ry_val = ref_data["Y"]
+            rz_val = ref_data["Z"]
+            cv2.putText(frame, f"REF X: {rx_val:+7.1f}  Y: {ry_val:+7.1f}  Z: {rz_val:+7.1f} mm", (ref_x + 15, 105), self.font, 0.42, (200, 200, 200), 1, cv2.LINE_AA)
 
-            cv2.putText(frame, "SAVED REFERENCE TRANSLATION:", (ref_x + 15, 70), self.font, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
-            cv2.putText(frame, f"X: {ref_data['X']:+8.1f} mm", (ref_x + 35, 95), self.font, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
-            cv2.putText(frame, f"Y: {ref_data['Y']:+8.1f} mm", (ref_x + 35, 120), self.font, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
-            cv2.putText(frame, f"Z: {ref_data['Z']:+8.1f} mm", (ref_x + 35, 145), self.font, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
+            # Delta Comparison Values (if tracking active and delta calculated)
+            if is_detected and delta_data is not None:
+                dx = delta_data["delta_X_mm"]
+                dy = delta_data["delta_Y_mm"]
+                dz = delta_data["delta_Z_mm"]
+                drx = delta_data["delta_Rx_deg"]
+                dry = delta_data["delta_Ry_deg"]
+                drz = delta_data["delta_Rz_deg"]
 
-            cv2.putText(frame, "SAVED REFERENCE ROTATION:", (ref_x + 15, 172), self.font, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
-            cv2.putText(frame, f"Rx: {ref_data['Rx']:+6.1f} deg", (ref_x + 35, 195), self.font, 0.52, (255, 255, 0), 2, cv2.LINE_AA)
-            cv2.putText(frame, f"Ry: {ref_data['Ry']:+6.1f} deg", (ref_x + 35, 218), self.font, 0.52, (255, 255, 0), 2, cv2.LINE_AA)
-            cv2.putText(frame, f"Rz: {ref_data['Rz']:+6.1f} deg", (ref_x + 35, 241), self.font, 0.52, (255, 255, 0), 2, cv2.LINE_AA)
+                cv2.putText(frame, "CHANGE (TRANSLATION DELTA):", (ref_x + 15, 135), self.font, 0.45, (0, 255, 0), 1, cv2.LINE_AA)
+                cv2.putText(frame, f"dX: {dx:+8.1f} mm", (ref_x + 35, 158), self.font, 0.52, (0, 255, 0), 2, cv2.LINE_AA)
+                cv2.putText(frame, f"dY: {dy:+8.1f} mm", (ref_x + 35, 180), self.font, 0.52, (0, 255, 0), 2, cv2.LINE_AA)
+                cv2.putText(frame, f"dZ: {dz:+8.1f} mm", (ref_x + 35, 202), self.font, 0.52, (0, 255, 0), 2, cv2.LINE_AA)
 
-        # Status Message Banner if warning/action occurred
+                cv2.putText(frame, "ROTATION CHANGE (DELTA EULER):", (ref_x + 15, 226), self.font, 0.45, (255, 255, 0), 1, cv2.LINE_AA)
+                cv2.putText(frame, f"dRx: {drx:+6.1f} | dRy: {dry:+6.1f} | dRz: {drz:+6.1f} deg", (ref_x + 15, 250), self.font, 0.44, (255, 255, 0), 1, cv2.LINE_AA)
+            else:
+                cv2.putText(frame, "CHANGE (TRANSLATION DELTA):", (ref_x + 15, 140), self.font, 0.45, (160, 160, 160), 1, cv2.LINE_AA)
+                cv2.putText(frame, "TRACKING LOST (Delta Unavailable)", (ref_x + 15, 175), self.font, 0.48, (0, 0, 255), 2, cv2.LINE_AA)
+        else:
+            cv2.putText(frame, "REFERENCE POSE", (ref_x + 15, 85), self.font, 0.55, (160, 160, 160), 2, cv2.LINE_AA)
+            cv2.putText(frame, "REFERENCE NOT SAVED", (ref_x + 15, 130), self.font, 0.52, (0, 165, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, "Press [SPACE] when marker is visible", (ref_x + 15, 165), self.font, 0.46, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.putText(frame, "to record baseline reference pose.", (ref_x + 15, 190), self.font, 0.44, (160, 160, 160), 1, cv2.LINE_AA)
+
+        # Status Message Banner (bottom left)
         if status_message:
             msg_bg = (0, 0, 180) if "Cannot" in status_message or "failed" in status_message else (0, 120, 0)
-            cv2.rectangle(frame, (15, 265), (15 + panel_w, 295), msg_bg, -1)
-            cv2.putText(frame, status_message, (25, 285), self.font, 0.46, (255, 255, 255), 1, cv2.LINE_AA)
+            cv2.rectangle(frame, (15, 305), (15 + panel_w, 335), msg_bg, -1)
+            cv2.putText(frame, status_message, (25, 325), self.font, 0.46, (255, 255, 255), 1, cv2.LINE_AA)
 
         # Bottom Controls Bar
         cv2.rectangle(frame, (10, h - 40), (w - 10, h - 10), (0, 0, 0), -1)
         cv2.putText(
             frame,
-            "[SPACE] Record Reference Pose  |  [R] Clear Reference  |  [Q] Quit",
+            "[SPACE] Record Baseline Reference  |  [R] Reset Reference  |  [Q] Quit",
             (20, h - 18),
             self.font,
             0.5,
@@ -307,6 +355,7 @@ class DashboardOverlay:
         )
 
         return frame
+
 
 
 
