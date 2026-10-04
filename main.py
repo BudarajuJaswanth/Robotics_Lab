@@ -57,7 +57,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def run_evaluation_mode(args) -> None:
+def run_evaluation_mode(args) -> str:
     logger.info("Initializing Stage 7: Physical Accuracy Testing Mode...")
     logger.info(f"Ground-Truth Expected Movement: Exp_X={args.exp_x} mm, Exp_Y={args.exp_y} mm, Exp_Z={args.exp_z} mm")
 
@@ -69,7 +69,7 @@ def run_evaluation_mode(args) -> None:
         logger.error("Please run the calibration stage first using:")
         logger.error("    python main.py --mode calibrate")
         logger.error("=" * 70 + "\n")
-        sys.exit(1)
+        return "calibrate"
 
     aruco_tracker = ArUcoTracker(dictionary_name=args.dict, marker_size_mm=args.marker_size)
     pose_estimator = PoseEstimator(marker_size_mm=args.marker_size)
@@ -83,13 +83,13 @@ def run_evaluation_mode(args) -> None:
 
     if not camera_manager.start():
         logger.critical("❌ ERROR: Failed to open physical camera stream.")
-        sys.exit(1)
+        return "quit"
 
-    window_name = "AI & Robotics Lab - Stage 7: Physical Accuracy Testing"
+    window_name = "AI & Robotics Lab - 6-DoF Object Tracker Dashboard"
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
     status_message = "1. Press [SPACE] to lock reference pose. 2. Move physical object. 3. Press [SPACE] to collect samples."
-    logger.info("Controls: [SPACE] Lock Ref / Collect Samples | [S] Save CSV | [R] Reset | [Q] Quit")
+    logger.info("Controls: [SPACE] Lock Ref / Collect Samples | [S] Save CSV | [R] Reset | [C] Calibrate | [T] Track | [Q] Quit")
 
     try:
         while True:
@@ -164,34 +164,40 @@ def run_evaluation_mode(args) -> None:
                 ref_manager.clear_reference()
                 status_message = "Reset evaluation experiment and reference."
 
+            # Mode Switches
+            elif key == ord('c') or key == ord('C'):
+                return "calibrate"
+            elif key == ord('t') or key == ord('T'):
+                return "track"
+            elif key == ord('a') or key == ord('A'):
+                status_message = "Already in Accuracy Evaluation Mode."
+
             # [Q] or [ESC] -> Quit
             elif key == ord('q') or key == ord('Q') or key == 27:
                 if len(evaluator.samples) > 0:
                     evaluator.save_csv()
                     print(evaluator.format_summary_report())
                 logger.info("Exiting accuracy evaluation mode...")
-                break
+                return "quit"
 
     finally:
         camera_manager.stop()
         cv2.destroyAllWindows()
 
 
-def run_tracking_mode(args) -> None:
+def run_tracking_mode(args) -> str:
     logger.info("Initializing Stage 5: Real 6-DoF Pose Tracking & Reference Recording...")
     logger.info(f"Configuration: ArUco Dict='{args.dict}', Physical Marker Size={args.marker_size} mm")
 
     calibrator = CameraCalibrator()
-    if not calibrator.load_calibration(args.calibration_file):
+    calib_loaded = calibrator.load_calibration(args.calibration_file)
+    if not calib_loaded:
         logger.error("\n" + "=" * 70)
         logger.error(f"❌ ERROR: Calibration file '{args.calibration_file}' does not exist or is invalid!")
         logger.error("Real 6-DoF pose estimation requires camera calibration parameters.")
-        logger.error("Please run the calibration stage first using:")
+        logger.error("Please run the calibration stage first using press [C] or:")
         logger.error("    python main.py --mode calibrate")
         logger.error("=" * 70 + "\n")
-        sys.exit(1)
-
-    logger.info(f"✅ Loaded camera calibration from {args.calibration_file}")
 
     aruco_tracker = ArUcoTracker(dictionary_name=args.dict, marker_size_mm=args.marker_size)
     pose_estimator = PoseEstimator(marker_size_mm=args.marker_size)
@@ -201,16 +207,19 @@ def run_tracking_mode(args) -> None:
 
     if not camera_manager.start():
         logger.critical("❌ ERROR: Failed to open physical camera stream.")
-        sys.exit(1)
+        return "quit"
 
-    window_name = "AI & Robotics Lab - Real-Time 6-DoF Pose & Reference Tracker"
+    window_name = "AI & Robotics Lab - 6-DoF Object Tracker Dashboard"
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
-    status_message = ""
+    status_message = "Ready. Point webcam at ArUco marker."
+    if not calib_loaded:
+        status_message = "CALIBRATION MISSING! Press [C] to run camera calibration."
+
     if ref_manager.has_reference():
         logger.info(f"Persistent reference pose loaded from {args.reference_file}")
 
-    logger.info("Controls: [SPACE] Save Reference Pose  |  [R] Clear Reference  |  [Q] Quit")
+    logger.info("Controls: [SPACE] Save Ref | [R] Reset Ref | [C] Calibrate | [T] Track | [A] Accuracy | [Q] Quit")
 
     try:
         while True:
@@ -228,23 +237,25 @@ def run_tracking_mode(args) -> None:
                 display_frame = aruco_tracker.draw_corners(display_frame, corners, marker_ids)
                 primary_id = marker_ids[0]
 
-                pose_success, pose_data = pose_estimator.estimate_pose(
-                    corners[0], calibrator.camera_matrix, calibrator.dist_coeffs
-                )
+                if calib_loaded and calibrator.camera_matrix is not None:
+                    pose_success, pose_data = pose_estimator.estimate_pose(
+                        corners[0], calibrator.camera_matrix, calibrator.dist_coeffs
+                    )
 
-                if pose_success and pose_data is not None:
-                    rvec = pose_data["rvec"]
-                    tvec = pose_data["tvec"]
-                    axis_len = pose_estimator.marker_size_m
-                    if hasattr(cv2, "drawFrameAxes"):
-                        cv2.drawFrameAxes(display_frame, calibrator.camera_matrix, calibrator.dist_coeffs, rvec, tvec, axis_len)
-                    elif hasattr(cv2.aruco, "drawAxis"):
-                        cv2.aruco.drawAxis(display_frame, calibrator.camera_matrix, calibrator.dist_coeffs, rvec, tvec, axis_len)
+                    if pose_success and pose_data is not None:
+                        rvec = pose_data["rvec"]
+                        tvec = pose_data["tvec"]
+                        axis_len = pose_estimator.marker_size_m
+                        if hasattr(cv2, "drawFrameAxes"):
+                            cv2.drawFrameAxes(display_frame, calibrator.camera_matrix, calibrator.dist_coeffs, rvec, tvec, axis_len)
+                        elif hasattr(cv2.aruco, "drawAxis"):
+                            cv2.aruco.drawAxis(display_frame, calibrator.camera_matrix, calibrator.dist_coeffs, rvec, tvec, axis_len)
 
             delta_data = None
             if is_detected and pose_data is not None and ref_manager.has_reference():
                 delta_data = ref_manager.calculate_delta(pose_data)
 
+            # Render Dashboard telemetry HUD overlay
             display_frame = dashboard.render_6dof_pose_hud(
                 display_frame,
                 is_detected=is_detected and (pose_data is not None),
@@ -252,13 +263,18 @@ def run_tracking_mode(args) -> None:
                 pose_data=pose_data,
                 ref_data=ref_manager.ref_data,
                 delta_data=delta_data,
-                status_message=status_message
+                status_message=status_message,
+                fps=camera_manager.get_fps(),
+                calibration_loaded=calib_loaded,
+                rms_error=calibrator.rms_reprojection_error if calib_loaded else None,
+                active_mode="TRACKING"
             )
 
             cv2.imshow(window_name, display_frame)
 
             key = cv2.waitKey(1) & 0xFF
 
+            # [SPACE] -> Record baseline reference
             if key == 32:
                 if is_detected and pose_data is not None and primary_id is not None:
                     ok, msg = ref_manager.save_reference_pose(
@@ -269,21 +285,31 @@ def run_tracking_mode(args) -> None:
                     status_message = "Cannot save reference: marker pose unavailable."
                     logger.warning(status_message)
 
+            # [R] -> Reset baseline reference
             elif key == ord('r') or key == ord('R'):
                 ok, msg = ref_manager.clear_reference()
                 status_message = msg
                 logger.info(msg)
 
+            # Mode Switches: C = Calibrate, T = Tracking, A = Accuracy Evaluation
+            elif key == ord('c') or key == ord('C'):
+                return "calibrate"
+            elif key == ord('t') or key == ord('T'):
+                status_message = "Already in Tracking Mode."
+            elif key == ord('a') or key == ord('A'):
+                return "evaluate"
+
+            # [Q] or [ESC] -> Quit
             elif key == ord('q') or key == ord('Q') or key == 27:
                 logger.info("Exiting 6-DoF tracking mode...")
-                break
+                return "quit"
 
     finally:
         camera_manager.stop()
         cv2.destroyAllWindows()
 
 
-def run_calibration_mode(args) -> None:
+def run_calibration_mode(args) -> str:
     logger.info("Initializing Stage 2: Camera Calibration Mode...")
     logger.info(f"Configuration: {args.cols}x{args.rows} inner corners, Square Size: {args.square_size} mm")
 
@@ -293,13 +319,13 @@ def run_calibration_mode(args) -> None:
 
     if not camera_manager.start():
         logger.critical("❌ ERROR: Failed to open physical laptop camera stream.")
-        sys.exit(1)
+        return "quit"
 
-    window_name = "AI & Robotics Lab - Stage 2: Camera Calibration"
+    window_name = "AI & Robotics Lab - 6-DoF Object Tracker Dashboard"
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
-    status_message = "Point webcam at physical printed chessboard."
-    logger.info("Controls: [SPACE] Capture Frame | [C] Calibrate | [R] Reset | [Q] Quit")
+    status_message = "Point webcam at physical printed chessboard pattern."
+    logger.info("Controls: [SPACE] Capture Frame | [C] Calibrate | [R] Reset | [T] Track | [A] Accuracy | [Q] Quit")
 
     try:
         while True:
@@ -330,33 +356,35 @@ def run_calibration_mode(args) -> None:
                     status_message = "❌ Cannot capture: Chessboard corners not found!"
 
             elif key == ord('c') or key == ord('C'):
-                logger.info("Calculating camera calibration parameters...")
-                calib_success, msg = calibrator.calibrate()
-                status_message = msg
-                if calib_success:
-                    save_success, save_msg = calibrator.save_calibration(args.calibration_file)
-                    status_message += f" | {save_msg}"
-                    logger.info("=" * 60)
-                    logger.info("Camera Intrinsic Matrix (K):")
-                    logger.info(f"\n{calibrator.camera_matrix}")
-                    logger.info("Lens Distortion Coefficients:")
-                    logger.info(f"\n{calibrator.dist_coeffs}")
-                    logger.info("=" * 60)
+                if len(calibrator.img_points) >= 5:
+                    logger.info("Calculating camera calibration parameters...")
+                    calib_success, msg = calibrator.calibrate()
+                    status_message = msg
+                    if calib_success:
+                        save_success, save_msg = calibrator.save_calibration(args.calibration_file)
+                        status_message += f" | {save_msg}"
+                else:
+                    status_message = f"Need at least 5 captured frames! (Currently: {len(calibrator.img_points)})"
 
             elif key == ord('r') or key == ord('R'):
                 calibrator.reset_frames()
                 status_message = "Reset all captured calibration frames."
 
+            elif key == ord('t') or key == ord('T'):
+                return "track"
+            elif key == ord('a') or key == ord('A'):
+                return "evaluate"
+
             elif key == ord('q') or key == ord('Q') or key == 27:
                 logger.info("Exiting calibration mode...")
-                break
+                return "quit"
 
     finally:
         camera_manager.stop()
         cv2.destroyAllWindows()
 
 
-def run_verification_mode(args) -> None:
+def run_verification_mode(args) -> str:
     logger.info("Initializing Camera Calibration Verification Mode...")
 
     calibrator = CameraCalibrator()
@@ -366,17 +394,16 @@ def run_verification_mode(args) -> None:
         logger.error("Please run the calibration stage first using:")
         logger.error("    python main.py --mode calibrate")
         logger.error("=" * 70 + "\n")
-        sys.exit(1)
+        return "calibrate"
 
     logger.info(f"✅ Calibration successfully loaded from {args.calibration_file}")
-    logger.info(f"Loaded RMS Error: {calibrator.rms_reprojection_error}")
 
     camera_manager = CameraManager(camera_id=args.camera_id, target_width=1280, target_height=720)
     dashboard = DashboardOverlay()
 
     if not camera_manager.start():
         logger.critical("❌ ERROR: Failed to open physical camera stream.")
-        sys.exit(1)
+        return "quit"
 
     w, h = camera_manager.get_resolution()
 
@@ -387,10 +414,8 @@ def run_verification_mode(args) -> None:
         calibrator.camera_matrix, calibrator.dist_coeffs, None, new_camera_matrix, (w, h), cv2.CV_32FC1
     )
 
-    window_name = "AI & Robotics Lab - Calibration Verification (Original vs Undistorted)"
+    window_name = "AI & Robotics Lab - 6-DoF Object Tracker Dashboard"
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
-
-    logger.info("Displaying live side-by-side verification stream. Press 'Q' or 'ESC' to exit.")
 
     try:
         while True:
@@ -410,9 +435,15 @@ def run_verification_mode(args) -> None:
             cv2.imshow(window_name, combined)
 
             key = cv2.waitKey(1) & 0xFF
-            if key == ord('q') or key == ord('Q') or key == 27:
+            if key == ord('t') or key == ord('T'):
+                return "track"
+            elif key == ord('c') or key == ord('C'):
+                return "calibrate"
+            elif key == ord('a') or key == ord('A'):
+                return "evaluate"
+            elif key == ord('q') or key == ord('Q') or key == 27:
                 logger.info("Exiting verification mode...")
-                break
+                return "quit"
     finally:
         camera_manager.stop()
         cv2.destroyAllWindows()
@@ -420,14 +451,21 @@ def run_verification_mode(args) -> None:
 
 def main() -> None:
     args = parse_args()
-    if args.mode == "calibrate":
-        run_calibration_mode(args)
-    elif args.mode == "verify":
-        run_verification_mode(args)
-    elif args.mode == "evaluate":
-        run_evaluation_mode(args)
-    else:
-        run_tracking_mode(args)
+    current_mode = args.mode
+
+    while current_mode != "quit":
+        if current_mode == "calibrate":
+            next_mode = run_calibration_mode(args)
+        elif current_mode == "verify":
+            next_mode = run_verification_mode(args)
+        elif current_mode == "evaluate":
+            next_mode = run_evaluation_mode(args)
+        else:
+            next_mode = run_tracking_mode(args)
+
+        if next_mode is None or next_mode == "quit":
+            break
+        current_mode = next_mode
 
 
 if __name__ == "__main__":
