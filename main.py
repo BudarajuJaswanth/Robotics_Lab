@@ -288,6 +288,9 @@ def run_tracking_mode(args) -> str:
 
             key = cv2.waitKey(1) & 0xFF
 
+            if key != 255 and key != 0:
+                logger.info(f"KeyPress detected: code={key} ({chr(key) if 32 <= key <= 126 else 'special'})")
+
             # [SPACE] -> Record baseline reference
             if key == 32:
                 if is_detected and pose_data is not None and primary_id is not None:
@@ -295,6 +298,7 @@ def run_tracking_mode(args) -> str:
                         primary_id, pose_data, calibration_info=args.calibration_file
                     )
                     status_message = msg
+                    logger.info(msg)
                 else:
                     status_message = "Cannot save reference: marker pose unavailable."
                     logger.warning(status_message)
@@ -368,6 +372,9 @@ def run_calibration_mode(args) -> str:
 
             cv2.imshow(window_name, display_frame)
             key = cv2.waitKey(1) & 0xFF
+
+            if key != 255 and key != 0:
+                logger.info(f"KeyPress detected in Calibration: code={key} ({chr(key) if 32 <= key <= 126 else 'special'})")
 
             if key == 32:  # SPACE
                 if found and refined_corners is not None:
