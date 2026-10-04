@@ -126,11 +126,11 @@ class ReferenceManager:
         tvec_curr = curr_pose_data["tvec"]
         T_curr = SpatialTransformations.rvec_tvec_to_matrix(rvec_curr, tvec_curr)
 
-        # SE(3) Rigid body relative transformation: T_rel = T_ref^(-1) * T_curr
-        ref_inv = np.linalg.inv(self.ref_transform)
-        T_rel = ref_inv @ T_curr
+        # SE(3) Rigid body relative transformations
+        T_ref_to_curr = SpatialTransformations.compute_ref_to_curr(self.ref_transform, T_curr)
+        T_curr_to_ref = SpatialTransformations.compute_curr_to_ref(self.ref_transform, T_curr)
 
-        rel_rvec, rel_tvec = SpatialTransformations.matrix_to_rvec_tvec(T_rel)
+        rel_rvec, rel_tvec = SpatialTransformations.matrix_to_rvec_tvec(T_ref_to_curr)
         dRx, dRy, dRz = SpatialTransformations.rvec_to_euler_angles(rel_rvec)
 
         # Coordinate difference deltas in physical millimeters
@@ -150,7 +150,9 @@ class ReferenceManager:
             "delta_Rx_deg": float(dRx),
             "delta_Ry_deg": float(dRy),
             "delta_Rz_deg": float(dRz),
-            "rel_matrix": T_rel
+            "rel_matrix": T_ref_to_curr,
+            "T_reference_to_current": T_ref_to_curr,
+            "T_current_to_reference": T_curr_to_ref
         }
 
 

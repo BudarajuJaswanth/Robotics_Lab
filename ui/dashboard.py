@@ -335,11 +335,32 @@ class DashboardOverlay:
             cv2.putText(frame, "Press [SPACE] when marker is visible", (ref_x + 15, 165), self.font, 0.46, (200, 200, 200), 1, cv2.LINE_AA)
             cv2.putText(frame, "to record baseline reference pose.", (ref_x + 15, 190), self.font, 0.44, (160, 160, 160), 1, cv2.LINE_AA)
 
-        # Status Message Banner (bottom left)
+        # ------------------- STAGE 8: 4x4 HOMOGENEOUS MATRIX PANEL -------------------
+        if delta_data is not None and "T_reference_to_current" in delta_data:
+            T_mat = delta_data["T_reference_to_current"]
+            mat_w = panel_w
+            mat_h = 115
+            mat_y = 55 + panel_h + 10
+            
+            # Left bottom overlay panel for Matrix
+            cv2.rectangle(overlay, (15, mat_y), (15 + mat_w, mat_y + mat_h), (10, 10, 10), -1)
+            cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
+            cv2.rectangle(frame, (15, mat_y), (15 + mat_w, mat_y + mat_h), (0, 255, 255), 1)
+
+            cv2.putText(frame, "STAGE 8: 4x4 RELATIVE TRANSFORMATION (T_ref_to_curr)", 
+                        (25, mat_y + 20), self.font, 0.42, (0, 255, 255), 1, cv2.LINE_AA)
+
+            row_ys = [mat_y + 40, mat_y + 60, mat_y + 80, mat_y + 100]
+            for r in range(4):
+                r_str = f"[{T_mat[r,0]:+7.3f} {T_mat[r,1]:+7.3f} {T_mat[r,2]:+7.3f} | {T_mat[r,3]:+8.2f}]"
+                color = (0, 255, 0) if r < 3 else (200, 200, 200)
+                cv2.putText(frame, r_str, (25, row_ys[r]), self.font, 0.42, color, 1, cv2.LINE_AA)
+
+        # Status Message Banner (bottom right / left)
         if status_message:
             msg_bg = (0, 0, 180) if "Cannot" in status_message or "failed" in status_message else (0, 120, 0)
-            cv2.rectangle(frame, (15, 305), (15 + panel_w, 335), msg_bg, -1)
-            cv2.putText(frame, status_message, (25, 325), self.font, 0.46, (255, 255, 255), 1, cv2.LINE_AA)
+            cv2.rectangle(frame, (ref_x, 55 + panel_h + 10), (ref_x + panel_w, 55 + panel_h + 45), msg_bg, -1)
+            cv2.putText(frame, status_message, (ref_x + 10, 55 + panel_h + 32), self.font, 0.44, (255, 255, 255), 1, cv2.LINE_AA)
 
         # Bottom Controls Bar
         cv2.rectangle(frame, (10, h - 40), (w - 10, h - 10), (0, 0, 0), -1)

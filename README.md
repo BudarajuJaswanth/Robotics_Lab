@@ -323,11 +323,96 @@ python main.py --mode evaluate --exp-x 0.0 --exp-y 0.0 --exp-z 100.0
 
 ### 📁 4. CSV Schema (`data/accuracy_results.csv`)
 
-```csv
-Timestamp,Sample_ID,Expected_dX_mm,Expected_dY_mm,Expected_dZ_mm,Measured_dX_mm,Measured_dY_mm,Measured_dZ_mm,Error_dX_mm,Error_dY_mm,Error_dZ_mm,Euclidean_Error_mm
-2026-10-04 18:50:00,1,50.00,0.00,0.00,48.52,0.85,-0.32,-1.48,0.85,-0.32,1.74
-2026-10-04 18:50:01,2,50.00,0.00,0.00,49.10,0.42,-0.15,-0.90,0.42,-0.15,1.00
+
+---
+
+## 🔄 Stage 8: Reference Coordinate Transformation & $SE(3)$ Homogeneous Matrices
+
+Stage 8 implements 3D Lie Group $SE(3)$ homogeneous coordinate transformations to rigorously compute physical relative motion between the baseline reference frame and the current marker pose.
+
+### 🧮 1. Mathematical Structure of $SE(3)$ Homogeneous Matrix
+
+A 6-DoF spatial pose is represented as a $4 \times 4$ homogeneous transformation matrix $T \in SE(3)$:
+
+$$T = \begin{bmatrix} R_{3 \times 3} & \mathbf{t}_{3 \times 1} \\ \mathbf{0}_{1 \times 3} & 1 \end{bmatrix} = \begin{bmatrix} R_{11} & R_{12} & R_{13} & t_x \\ R_{21} & R_{22} & R_{23} & t_y \\ R_{31} & R_{32} & R_{33} & t_z \\ 0 & 0 & 0 & 1 \end{bmatrix}$$
+
+- **$R_{3 \times 3} \in SO(3)$**: 3D orthogonal rotation matrix ($\det(R) = +1, R^T = R^{-1}$).
+- **$\mathbf{t}_{3 \times 1} \in \mathbb{R}^3$**: 3D translation vector $[t_x, t_y, t_z]^T$ in physical millimeters.
+
+---
+
+### 📐 2. Transformation Definitions & Physical Meanings
+
+#### A. Reference Pose Matrix ($T_{\text{ref}}$)
+Represents the baseline physical coordinate frame saved in `reference/data.json` relative to the camera optical center.
+
+#### B. Current Pose Matrix ($T_{\text{curr}}$)
+Represents the real-time physical pose of the ArUco marker currently observed by the laptop webcam relative to the camera optical center.
+
+#### C. Analytical $SE(3)$ Matrix Inverse ($T^{-1}$)
+Fast, exact inverse computation leveraging rotation orthogonality ($R^{-1} = R^T$):
+
+$$T^{-1} = \begin{bmatrix} R^T & -R^T \cdot \mathbf{t} \\ \mathbf{0}_{1 \times 3} & 1 \end{bmatrix}$$
+
+#### D. Reference-to-Current Transformation ($T_{\text{ref\_to\_curr}}$)
+
+$$T_{\text{ref\_to\_curr}} = (T_{\text{ref}})^{-1} \cdot T_{\text{curr}}$$
+
+- **Physical Meaning**: Rigid 6-DoF spatial transformation describing how the marker has physically moved from its original baseline position.
+- **Coordinate Point Mapping**: Transforms a 3D point $P_{\text{ref}}$ defined in the baseline reference frame into the current marker frame:
+
+$$P_{\text{curr}} = T_{\text{ref\_to\_curr}} \cdot P_{\text{ref}}$$
+
+#### E. Current-to-Reference Transformation ($T_{\text{curr\_to\_ref}}$)
+
+$$T_{\text{curr\_to\_ref}} = (T_{\text{curr}})^{-1} \cdot T_{\text{ref}} = (T_{\text{ref\_to\_curr}})^{-1}$$
+
+- **Physical Meaning**: Inverse transformation mapping points from the current marker frame back into the original baseline reference coordinate system.
+- **Coordinate Point Mapping**:
+
+$$P_{\text{ref}} = T_{\text{curr\_to\_ref}} \cdot P_{\text{curr}}$$
+
+---
+
+### 💻 3. Transformations Module Functions (`tracking/transformations.py`)
+
+- `rvec_to_rotation_matrix(rvec)`: Converts 3x1 Rodrigues rotation vector to 3x3 rotation matrix $R \in SO(3)$.
+- `pose_to_homogeneous_matrix(rvec, tvec)`: Combines `rvec` and `tvec` into $4 \times 4$ homogeneous matrix $T \in SE(3)$.
+- `inverse_transformation(T)`: Computes analytical $SE(3)$ inverse $T^{-1} = \begin{bmatrix} R^T & -R^T t \\ 0 & 1 \end{bmatrix}$.
+- `relative_transformation(T_source, T_target)`: Computes $T_{\text{rel}} = T_{\text{source}}^{-1} \cdot T_{\text{target}}$.
+- `compute_ref_to_curr(T_ref, T_curr)`: Computes $T_{\text{ref\_to\_curr}} = T_{\text{ref}}^{-1} \cdot T_{\text{curr}}$.
+- `compute_curr_to_ref(T_ref, T_curr)`: Computes $T_{\text{curr\_to\_ref}} = T_{\text{curr}}^{-1} \cdot T_{\text{ref}}$.
+- `transform_3d_points(T, points_3d)`: Transforms $N \times 3$ array of 3D point coordinates by $4 \times 4$ matrix $T$.
+- `rvec_to_euler_angles(rvec)`: Converts Rodrigues vector to intrinsic XYZ Euler angles ($R_x, R_y, R_z$) in degrees.
+
+---
+
+### 🖥️ 4. Live UI HUD Matrix Overlay
+
+During tracking mode (`python main.py --mode track`), when baseline reference is recorded and tracking is active, the UI renders the live $4 \times 4$ relative homogeneous matrix panel:
+
+```text
+STAGE 8: 4x4 RELATIVE TRANSFORMATION (T_ref_to_curr)
+[ +0.998 -0.045 +0.012 |  +12.40]
+[ +0.044 +0.999 +0.018 |  -45.20]
+[ -0.013 -0.017 +0.999 | +105.80]
+[  0.000  0.000  0.000 |   1.00]
 ```
+
+---
+
+## 📜 Summary of Keyboard Shortcuts
+
+| Key | Mode | Function |
+| :--- | :--- | :--- |
+| **`SPACE`** | `calibrate` | Capture chessboard calibration frame |
+| **`C`** | `calibrate` | Compute intrinsic camera matrix & save JSON |
+| **`R`** | `calibrate` / `track` / `evaluate` | Reset captured frames / reference pose / evaluation samples |
+| **`SPACE`** | `track` | Record baseline reference pose to `reference/data.json` |
+| **`SPACE`** | `evaluate` | Lock baseline reference OR capture accuracy test sample |
+| **`S`** | `evaluate` | Export accuracy experiment results to `data/accuracy_results.csv` |
+| **`Q` / `ESC`** | All | Quit current application mode |
+
 
 
 
