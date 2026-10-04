@@ -1,12 +1,13 @@
-# RealTime_6DOF_Object_Tracker
+# AI and Robotics Lab - Real-Time 6-DoF Object Tracker
 
-A real-time physical computer vision application for 6-DoF (Degrees of Freedom) object tracking using Python, OpenCV, and NumPy.
+A real-time physical computer vision application for 6-DoF (Degrees of Freedom) object tracking using Python, OpenCV, and NumPy, developed for the **AI and Robotics Lab**.
 
 > **Note:** This project operates exclusively on live physical camera feeds from hardware webcams. It does not use fake frames, simulated pose metrics, pre-recorded videos, or cloud vision APIs.
 
 ---
 
 ## 📌 Project Overview
+
 
 This application measures real-time 6-DoF object poses relative to a calibrated camera frame:
 - **3-DoF Translation**: X, Y, Z coordinates in physical space (meters/millimeters).

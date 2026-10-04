@@ -18,7 +18,7 @@ logger = logging.getLogger("Main")
 
 
 def main() -> None:
-    logger.info("Initializing Real-Time 6-DoF Object Tracker [Stage 1: Webcam Feed]...")
+    logger.info("Initializing AI and Robotics Lab - Real-Time 6-DoF Object Tracker [Stage 1: Webcam Feed]...")
 
     camera_manager = CameraManager(camera_id=0, target_width=1280, target_height=720)
 
@@ -31,7 +31,7 @@ def main() -> None:
         logger.critical("=" * 65 + "\n")
         sys.exit(1)
 
-    window_name = "RealTime 6DOF Tracker - Stage 1 (Physical Camera Feed)"
+    window_name = "AI & Robotics Lab - 6DOF Tracker (Physical Camera Feed)"
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
     logger.info("Live physical camera stream started successfully.")
