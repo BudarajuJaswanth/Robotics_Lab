@@ -165,5 +165,53 @@ python main.py --mode track --dict DICT_6X6_250 --marker-size 50.0
     - **Blue**: Z axis (pointing outwards perpendicular to marker plane)
 - Press **`Q`** or **`ESC`** to quit cleanly.
 
+---
+
+## 📐 Stage 4: REAL 6-DoF Pose Estimation & Coordinate Conventions
+
+Stage 4 calculates the 3D translation ($X, Y, Z$ in millimeters) and 3D rotation ($R_x, R_y, R_z$ in degrees) of the detected physical ArUco marker relative to the laptop camera optical center.
+
+### 🌐 1. Coordinate System Conventions
+
+1. **Camera Optical Coordinate Frame (Right-Handed System)**:
+   - **Origin $(0,0,0)$**: The optical center (pinhole focus point) of the laptop camera lens.
+   - **$+X$ axis**: Points **RIGHT** across the camera's horizontal field of view.
+   - **$+Y$ axis**: Points **DOWN** across the camera's vertical field of view.
+   - **$+Z$ axis**: Points **FORWARD** along the optical axis into the physical 3D scene (Optical Depth / Distance from camera lens).
+
+2. **Physical Marker Coordinate Frame**:
+   - **Origin $(0,0,0)$**: Located at the exact **center** of the physical square ArUco marker.
+   - **$+Z$ axis**: Points **OUTWARD NORMAL** perpendicular to the printed front face of the marker.
+
+3. **Euler Angle Rotation Conventions (Pitch, Yaw, Roll)**:
+   - **Order**: Intrinsic $X \rightarrow Y \rightarrow Z$ Euler decomposition.
+   - **$R_x$ (Pitch)**: Rotation around the $X$-axis (tilting target up or down) in degrees ($^\circ$).
+   - **$R_y$ (Yaw)**: Rotation around the $Y$-axis (panning target left or right) in degrees ($^\circ$).
+   - **$R_z$ (Roll)**: Rotation around the $Z$-axis (swiveling target clockwise/counterclockwise) in degrees ($^\circ$).
+
+---
+
+### 🖥️ 2. Live Telemetry HUD Display
+
+```text
+POSE 6-DoF [ID: 23] (RAW UNFILTERED)
+TRANSLATION (mm):
+X:   +124.5 mm
+Y:    -45.2 mm
+Z:   +450.8 mm
+
+ROTATION (Euler Degrees):
+Rx (Pitch):   +12.4 deg
+Ry (Yaw)  :    -5.1 deg
+Rz (Roll) :  +178.2 deg
+```
+
+---
+
+### 🔍 3. Raw Measurement Noise Evaluation
+- The displayed $X, Y, Z, R_x, R_y, R_z$ values are **raw, unfiltered physical measurements** derived from Perspective-n-Point ($PnP$) estimation (`cv2.SOLVEPNP_IPPE_SQUARE`).
+- Showing raw values allows direct evaluation of physical camera sensor noise and illumination stability before applying temporal smoothing filters in downstream stages.
+
+
 
 

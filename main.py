@@ -1,14 +1,9 @@
 """
 AI and Robotics Lab - Real-Time 6-DoF Object Tracker
-Stage 3 & All Modes Entry Point
+Stage 4: Real-Time 6-DoF Pose Estimation Entry Point
 
-Modes:
-  1. Tracking (--mode track): Real-time physical ArUco marker detection, 2D corner extraction,
-     and 3D coordinate axis rendering using calibrated camera parameters.
-  2. Calibration (--mode calibrate): Physical chessboard corner detection, sub-pixel refinement,
-     cv2.calibrateCamera intrinsic matrix solver, and JSON persistence.
-  3. Verification (--mode verify): Real-time side-by-side comparison of raw webcam feed vs.
-     undistorted camera feed using saved JSON parameters.
+Orchestrates live physical webcam ingestion, ArUco marker detection, Perspective-n-Point (PnP) 
+6-DoF pose estimation, Euler angle conversion, 3D coordinate axis drawing, and raw HUD telemetry.
 """
 
 import sys
@@ -19,6 +14,8 @@ import cv2
 import numpy as np
 from camera.camera_manager import CameraManager
 from camera.calibration import CameraCalibrator
+from tracking.aruco_tracker import ArUcoTracker
+from tracking.pose_estimator import PoseEstimator
 from ui.dashboard import DashboardOverlay
 
 logging.basicConfig(
@@ -31,7 +28,7 @@ logger = logging.getLogger("Main")
 def parse_args():
     parser = argparse.ArgumentParser(description="AI & Robotics Lab - Real-Time 6-DoF Object Tracker")
     parser.add_argument("--mode", type=str, choices=["track", "calibrate", "verify"], default="track",
-                        help="Operation mode: 'track' for live ArUco detection & 3D axes, 'calibrate' for chessboard calibration, 'verify' for undistortion test (default: track)")
+                        help="Operation mode: 'track' for live 6-DoF pose estimation & 3D axes, 'calibrate' for chessboard calibration, 'verify' for undistortion test (default: track)")
     parser.add_argument("--dict", type=str, default="DICT_6X6_250",
                         help="ArUco dictionary name (e.g. DICT_6X6_250, DICT_4X4_50, DICT_5X5_100, etc.) (default: DICT_6X6_250)")
     parser.add_argument("--marker-size", type=float, default=50.0,
@@ -46,23 +43,23 @@ def parse_args():
 
 
 def run_tracking_mode(args) -> None:
-    logger.info("Initializing Stage 3: Real-Time ArUco Marker Tracking...")
-    logger.info(f"ArUco Configuration: Dictionary='{args.dict}', Marker Size={args.marker_size} mm")
+    logger.info("Initializing Stage 4: Real-Time 6-DoF Pose Estimation...")
+    logger.info(f"Configuration: ArUco Dict='{args.dict}', Physical Marker Size={args.marker_size} mm")
 
     calibrator = CameraCalibrator()
     if not calibrator.load_calibration(args.calibration_file):
         logger.error("\n" + "=" * 70)
         logger.error(f"❌ ERROR: Calibration file '{args.calibration_file}' does not exist or is invalid!")
-        logger.error("ArUco 3D pose estimation & axis drawing require camera calibration parameters.")
+        logger.error("Real 6-DoF pose estimation requires camera calibration parameters.")
         logger.error("Please run the calibration stage first using:")
         logger.error("    python main.py --mode calibrate")
         logger.error("=" * 70 + "\n")
         sys.exit(1)
 
-    logger.info(f"✅ Loaded valid camera calibration from {args.calibration_file}")
+    logger.info(f"✅ Loaded camera intrinsic matrix K and distortion coefficients from {args.calibration_file}")
 
-    from tracking.aruco_tracker import ArUcoTracker
     aruco_tracker = ArUcoTracker(dictionary_name=args.dict, marker_size_mm=args.marker_size)
+    pose_estimator = PoseEstimator(marker_size_mm=args.marker_size)
     camera_manager = CameraManager(camera_id=args.camera_id, target_width=1280, target_height=720)
     dashboard = DashboardOverlay()
 
@@ -70,10 +67,10 @@ def run_tracking_mode(args) -> None:
         logger.critical("❌ ERROR: Failed to open physical camera stream.")
         sys.exit(1)
 
-    window_name = "AI & Robotics Lab - Real-Time ArUco Marker Tracking (Stage 3)"
+    window_name = "AI & Robotics Lab - Real-Time 6-DoF Object Tracker (Stage 4)"
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
-    logger.info("Live ArUco tracking active. Show physical printed ArUco marker to laptop webcam.")
+    logger.info("Live 6-DoF Pose Tracking active. Present physical ArUco marker to laptop webcam.")
     logger.info("Press 'Q' or 'ESC' to exit.")
 
     try:
@@ -82,33 +79,46 @@ def run_tracking_mode(args) -> None:
             if not success or raw_frame is None:
                 continue
 
-            # Detect ArUco markers in live camera feed
+            # Detect ArUco marker in physical camera frame
             is_detected, marker_ids, corners, meta = aruco_tracker.detect_markers(raw_frame)
 
             display_frame = raw_frame.copy()
-            if is_detected:
-                # Draw 4 corner boundaries & outline box
+            pose_data = None
+            primary_id = None
+
+            if is_detected and len(corners) > 0:
+                # Outline 4 marker corners
                 display_frame = aruco_tracker.draw_corners(display_frame, corners, marker_ids)
-                # Solve PnP and draw 3D coordinate axes
-                display_frame, poses = aruco_tracker.draw_axes_and_pose(
-                    display_frame, corners, marker_ids, calibrator.camera_matrix, calibrator.dist_coeffs
+                primary_id = marker_ids[0]
+
+                # Estimate 6-DoF Pose (PnP IPPE Square Solver)
+                pose_success, pose_data = pose_estimator.estimate_pose(
+                    corners[0], calibrator.camera_matrix, calibrator.dist_coeffs
                 )
 
-            # Render ArUco HUD telemetry overlay
-            display_frame = dashboard.render_aruco_hud(
+                if pose_success and pose_data is not None:
+                    # Draw 3D Coordinate Frame Axes (X: Red, Y: Green, Z: Blue)
+                    rvec = pose_data["rvec"]
+                    tvec = pose_data["tvec"]
+                    axis_len = pose_estimator.marker_size_m
+                    if hasattr(cv2, "drawFrameAxes"):
+                        cv2.drawFrameAxes(display_frame, calibrator.camera_matrix, calibrator.dist_coeffs, rvec, tvec, axis_len)
+                    elif hasattr(cv2.aruco, "drawAxis"):
+                        cv2.aruco.drawAxis(display_frame, calibrator.camera_matrix, calibrator.dist_coeffs, rvec, tvec, axis_len)
+
+            # Render Raw 6-DoF Telemetry HUD Overlay
+            display_frame = dashboard.render_6dof_pose_hud(
                 display_frame,
-                is_detected=is_detected,
-                marker_ids=marker_ids,
-                dictionary_name=aruco_tracker.dictionary_name,
-                marker_size_mm=aruco_tracker.marker_size_mm,
-                is_calibrated=True
+                is_detected=is_detected and (pose_data is not None),
+                marker_id=primary_id,
+                pose_data=pose_data
             )
 
             cv2.imshow(window_name, display_frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == ord('Q') or key == 27:
-                logger.info("Exiting ArUco tracking mode...")
+                logger.info("Exiting 6-DoF tracking mode...")
                 break
     finally:
         camera_manager.stop()
@@ -212,7 +222,6 @@ def run_verification_mode(args) -> None:
 
     w, h = camera_manager.get_resolution()
 
-    # Precompute rectify map for high-speed real-time undistortion
     new_camera_matrix, _ = cv2.getOptimalNewCameraMatrix(
         calibrator.camera_matrix, calibrator.dist_coeffs, (w, h), 1, (w, h)
     )
@@ -231,10 +240,8 @@ def run_verification_mode(args) -> None:
             if not success or raw_frame is None:
                 continue
 
-            # Apply real camera matrix & distortion coefficients
             undistorted_frame = cv2.remap(raw_frame, mapx, mapy, cv2.INTER_LINEAR)
 
-            # Render side-by-side verification HUD
             combined = dashboard.render_verification_hud(
                 raw_frame,
                 undistorted_frame,
